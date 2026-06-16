@@ -1,0 +1,78 @@
+package domain
+
+import "time"
+
+// Issue represents a tracker issue.
+type Issue struct {
+	ProjectID   string
+	SourceID    string
+	ID          string
+	Identifier  string
+	Title       string
+	Description *string
+	State       string
+	BranchName  *string
+	URL         *string
+	Labels      []string
+	Assignees   []string
+	CreatedAt   *time.Time
+}
+
+// ProjectConfig holds per-project settings.
+type ProjectConfig struct {
+	ID           string   `yaml:"id"`
+	RepoURL      string   `yaml:"repo_url"`
+	ActiveStates []string `yaml:"active_states"`
+	BranchPrefix string   `yaml:"branch_prefix"`
+}
+
+// Config is the top-level configuration loaded from YAML.
+type Config struct {
+	Gitea struct {
+		Endpoint string          `yaml:"endpoint"`
+		Token    string          `yaml:"token"`
+		Projects []ProjectConfig `yaml:"projects"`
+	} `yaml:"gitea"`
+
+	Scheduler struct {
+		PollInterval  time.Duration `yaml:"poll_interval"`
+		MaxConcurrent int           `yaml:"max_concurrent"`
+	} `yaml:"scheduler"`
+
+	Codex struct {
+		Command string        `yaml:"command"`
+		Model   string        `yaml:"model"`
+		Timeout time.Duration `yaml:"timeout"`
+	} `yaml:"codex"`
+
+	Reviewer struct {
+		Command string        `yaml:"command"`
+		Timeout time.Duration `yaml:"timeout"`
+	} `yaml:"reviewer"`
+
+	Workspace struct {
+		Root string `yaml:"root"`
+	} `yaml:"workspace"`
+}
+
+// Status represents the symphony processing state of an issue.
+type Status string
+
+const (
+	StatusPending Status = "pending"
+	StatusRunning Status = "running"
+	StatusDone    Status = "done"
+	StatusFailed  Status = "failed"
+)
+
+// Workspace represents a local working directory for an issue.
+type Workspace struct {
+	Path     string
+	IssueKey string
+}
+
+// PublishResult holds the result of publishing an execution branch.
+type PublishResult struct {
+	Branch string
+	Commit string
+}
