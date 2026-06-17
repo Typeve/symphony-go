@@ -12,6 +12,10 @@ _Avoid_: tracker project, repo config, watched repo
 A tracker issue selected as work for an agent run. A **Task Issue** belongs to one **Managed Project** and may produce one **Execution Branch**.
 _Avoid_: ticket, job, task when referring to the tracker record
 
+**Task Issue Execution**:
+The in-process module that runs one **Task Issue** from `symphony-running` through Agent Run, Review Gate, Execution Branch publish, and Done Handoff or failure marking.
+_Avoid_: scheduler, worker, background job when referring to the per-issue execution sequence
+
 **Execution Branch**:
 A remote Git branch containing the work produced for one **Task Issue**. It is the MVP handoff artifact for human review.
 _Avoid_: PR branch, temporary branch

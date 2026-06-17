@@ -9,12 +9,14 @@ starting, honor its STOP conditions, and update the status row when done.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 001 | Harden MVP execution pipeline | P1 | M | - | DONE |
+| 002 | Deepen Task Issue execution pipeline | P1 | M | 001 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale).
 
 ## Dependency Notes
 
 - 001 should land before any feature expansion. It protects the core Gitea issue -> Codex -> reviewer -> execution branch path from committing sensitive agent artifacts, failing silently, or drifting from the documented MVP contract.
+- 002 should land after 001 because it preserves the hardened command, credential, failure, and commit behavior while moving per-issue execution behind one deeper Module.
 
 ## Findings Considered And Rejected
 

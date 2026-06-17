@@ -1,32 +1,29 @@
 package orchestrator
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"log/slog"
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/local/symphony/internal/agentenv"
-	"github.com/local/symphony/internal/commandline"
 	"github.com/local/symphony/internal/domain"
-	"github.com/local/symphony/internal/execution"
-	"github.com/local/symphony/internal/reviewer"
+	"github.com/local/symphony/internal/executor"
 	"github.com/local/symphony/internal/tracker"
-	"github.com/local/symphony/internal/workspace"
 )
+
+type issueRunner interface {
+	Process(ctx context.Context, issue domain.Issue, project domain.ProjectConfig)
+}
 
 // Scheduler polls configured projects for pending issues and processes them.
 type Scheduler struct {
 	Config  domain.Config
 	Tracker tracker.Client
 
-	sem chan struct{}
-	wg  sync.WaitGroup
+	runner issueRunner
+	sem    chan struct{}
+	wg     sync.WaitGroup
 }
 
 // New creates a Scheduler with the given config and tracker client.
@@ -42,6 +39,7 @@ func New(cfg domain.Config, tr tracker.Client) *Scheduler {
 	return &Scheduler{
 		Config:  cfg,
 		Tracker: tr,
+		runner:  executor.New(cfg, tr),
 		sem:     make(chan struct{}, max),
 	}
 }
@@ -97,11 +95,11 @@ func (s *Scheduler) poll(ctx context.Context) {
 			select {
 			case s.sem <- struct{}{}:
 				s.wg.Add(1)
-				go func(is domain.Issue) {
+				go func(is domain.Issue, project domain.ProjectConfig) {
 					defer s.wg.Done()
 					defer func() { <-s.sem }()
-					s.processIssue(ctx, is, proj)
-				}(issue)
+					s.runner.Process(ctx, is, project)
+				}(issue, proj)
 				dispatched++
 			default:
 				// No slot available, skip remaining issues this round.
@@ -152,145 +150,6 @@ func (s *Scheduler) findProject(issue domain.Issue) (domain.ProjectConfig, bool)
 	return domain.ProjectConfig{}, false
 }
 
-// processIssue runs the full pipeline for a single issue:
-// mark running → create workspace → create branch → codex → review → commit & push → mark done.
-func (s *Scheduler) processIssue(ctx context.Context, issue domain.Issue, proj domain.ProjectConfig) {
-	log := slog.With(
-		"project", proj.ID,
-		"issue", issue.Identifier,
-		"title", issue.Title,
-	)
-	log.Info("processing issue")
-
-	// Mark as running.
-	if err := s.Tracker.MarkStatus(ctx, issue, domain.StatusRunning); err != nil {
-		log.Error("mark running failed", "error", err)
-		return
-	}
-
-	failed := false
-	var ws domain.Workspace
-	fail := func(reason string) {
-		failed = true
-		if strings.TrimSpace(ws.Path) != "" {
-			log.Error(reason, "workspace_path", ws.Path)
-		} else {
-			log.Error(reason)
-		}
-		_ = s.Tracker.MarkStatus(context.Background(), issue, domain.StatusFailed)
-	}
-
-	// Create workspace (clones repo).
-	ws, err := workspace.Create(ctx, issue, s.Config)
-	if err != nil {
-		fail(fmt.Sprintf("create workspace failed: %v", err))
-		return
-	}
-	defer func() {
-		if !shouldCleanWorkspace(failed, ws) {
-			if failed && strings.TrimSpace(ws.Path) != "" {
-				log.Info("preserving failed workspace", "workspace_path", ws.Path)
-			}
-			return
-		}
-		if cleanErr := workspace.Clean(context.Background(), ws); cleanErr != nil {
-			log.Error("clean workspace failed", "error", cleanErr)
-		}
-	}()
-
-	// Create branch.
-	if err := execution.CreateBranch(ws, issue); err != nil {
-		fail(fmt.Sprintf("create branch failed: %v", err))
-		return
-	}
-	branch := execution.BranchName(issue)
-
-	// Run Codex.
-	log.Info("running codex", "branch", branch)
-	if err := s.runCodex(ctx, issue, ws); err != nil {
-		fail(fmt.Sprintf("codex failed: %v", err))
-		return
-	}
-
-	// Run reviewer.
-	log.Info("running reviewer")
-	if err := reviewer.Run(ctx, s.Config.Reviewer.Command, s.Config.Reviewer.Timeout, ws.Path); err != nil {
-		fail(fmt.Sprintf("reviewer failed: %v", err))
-		return
-	}
-
-	// Commit and push.
-	log.Info("committing and pushing")
-	result, err := execution.CommitAndPush(ctx, ws, branch, s.Config.Gitea.Token)
-	if err != nil {
-		fail(fmt.Sprintf("commit and push failed: %v", err))
-		return
-	}
-	log.Info("pushed", "branch", result.Branch, "commit", result.Commit)
-
-	// Mark as done.
-	if err := s.Tracker.MarkStatus(context.Background(), issue, domain.StatusDone); err != nil {
-		log.Error("mark done failed", "error", err)
-		return
-	}
-	log.Info("issue completed")
-}
-
-// runCodex executes the Codex CLI command in the workspace directory.
-func (s *Scheduler) runCodex(ctx context.Context, issue domain.Issue, ws domain.Workspace) error {
-	cmdStr := strings.TrimSpace(s.Config.Codex.Command)
-	if cmdStr == "" {
-		cmdStr = "codex"
-	}
-
-	timeout := s.Config.Codex.Timeout
-	if timeout <= 0 {
-		timeout = 30 * time.Minute
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	prompt := s.buildCodexPrompt(issue)
-
-	name, args, err := commandline.Split(cmdStr, "codex")
-	if err != nil {
-		return err
-	}
-	args = append(args, "--prompt", prompt)
-
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = ws.Path
-	cmd.Env = agentenv.Filter(os.Environ())
-
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-
-	if err := cmd.Run(); err != nil {
-		text := strings.TrimSpace(out.String())
-		if len(text) > 1024 {
-			text = text[:1024] + "...[truncated]"
-		}
-		if text != "" {
-			return fmt.Errorf("codex: %w: %s", err, text)
-		}
-		return fmt.Errorf("codex: %w", err)
-	}
-	return nil
-}
-
-// buildCodexPrompt constructs a prompt string for the Codex agent.
-func (s *Scheduler) buildCodexPrompt(issue domain.Issue) string {
-	var b strings.Builder
-	b.WriteString("Resolve the following issue:\n\n")
-	b.WriteString(fmt.Sprintf("Title: %s\n", issue.Title))
-	if issue.Description != nil && *issue.Description != "" {
-		b.WriteString(fmt.Sprintf("Description:\n%s\n", *issue.Description))
-	}
-	b.WriteString("\nImplement the necessary changes in this repository.")
-	return b.String()
-}
-
 func hasManagedStatusLabel(labels []string) bool {
 	for _, label := range labels {
 		switch strings.ToLower(strings.TrimSpace(label)) {
@@ -299,8 +158,4 @@ func hasManagedStatusLabel(labels []string) bool {
 		}
 	}
 	return false
-}
-
-func shouldCleanWorkspace(failed bool, ws domain.Workspace) bool {
-	return !failed && strings.TrimSpace(ws.Path) != ""
 }
