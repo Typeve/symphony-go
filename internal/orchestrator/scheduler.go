@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/local/symphony/internal/agentenv"
+	"github.com/local/symphony/internal/commandline"
 	"github.com/local/symphony/internal/domain"
 	"github.com/local/symphony/internal/execution"
 	"github.com/local/symphony/internal/reviewer"
@@ -166,8 +168,15 @@ func (s *Scheduler) processIssue(ctx context.Context, issue domain.Issue, proj d
 		return
 	}
 
+	failed := false
+	var ws domain.Workspace
 	fail := func(reason string) {
-		log.Error(reason)
+		failed = true
+		if strings.TrimSpace(ws.Path) != "" {
+			log.Error(reason, "workspace_path", ws.Path)
+		} else {
+			log.Error(reason)
+		}
 		_ = s.Tracker.MarkStatus(context.Background(), issue, domain.StatusFailed)
 	}
 
@@ -178,6 +187,12 @@ func (s *Scheduler) processIssue(ctx context.Context, issue domain.Issue, proj d
 		return
 	}
 	defer func() {
+		if !shouldCleanWorkspace(failed, ws) {
+			if failed && strings.TrimSpace(ws.Path) != "" {
+				log.Info("preserving failed workspace", "workspace_path", ws.Path)
+			}
+			return
+		}
 		if cleanErr := workspace.Clean(context.Background(), ws); cleanErr != nil {
 			log.Error("clean workspace failed", "error", cleanErr)
 		}
@@ -237,15 +252,28 @@ func (s *Scheduler) runCodex(ctx context.Context, issue domain.Issue, ws domain.
 
 	prompt := s.buildCodexPrompt(issue)
 
-	cmd := exec.CommandContext(ctx, cmdStr, "--prompt", prompt)
+	name, args, err := commandline.Split(cmdStr, "codex")
+	if err != nil {
+		return err
+	}
+	args = append(args, "--prompt", prompt)
+
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = ws.Path
 	cmd.Env = agentenv.Filter(os.Environ())
 
-	// Run without inheriting stdout/stderr to avoid noise.
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
 
 	if err := cmd.Run(); err != nil {
+		text := strings.TrimSpace(out.String())
+		if len(text) > 1024 {
+			text = text[:1024] + "...[truncated]"
+		}
+		if text != "" {
+			return fmt.Errorf("codex: %w: %s", err, text)
+		}
 		return fmt.Errorf("codex: %w", err)
 	}
 	return nil
@@ -271,4 +299,8 @@ func hasManagedStatusLabel(labels []string) bool {
 		}
 	}
 	return false
+}
+
+func shouldCleanWorkspace(failed bool, ws domain.Workspace) bool {
+	return !failed && strings.TrimSpace(ws.Path) != ""
 }

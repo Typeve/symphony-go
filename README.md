@@ -32,6 +32,8 @@ Gitea issue
 - Codex and reviewer processes receive only a small environment allowlist.
 - `GITEA_TOKEN` is used by Symphony for tracker and Git operations, but it is not passed to Codex or the reviewer process.
 - Git clone and push use temporary `GIT_ASKPASS` credentials instead of writing tokens into remote URLs.
+- Execution commits exclude common local artifacts such as `.codex/**`, `.symphony/validation-verdict.json`, `.env*`, and `*.log`.
+- Reviewer success is the reviewer command exiting with status 0; the current MVP does not parse a structured verdict file.
 - No HTTP status API, PR creation, merge automation, dependency blocking, reconcile loop, or per-state concurrency limits are included in the current MVP.
 
 ## Build And Test
@@ -131,6 +133,8 @@ Gitea issue
 - Codex 和 reviewer 子进程只继承一个很小的环境变量白名单。
 - `GITEA_TOKEN` 只供 Symphony 主进程做 tracker 和 Git 操作，不传给 Codex 或 reviewer。
 - Git clone / push 使用临时 `GIT_ASKPASS`，不会把 token 写进 remote URL。
+- execution commit 会排除常见本地产物，例如 `.codex/**`、`.symphony/validation-verdict.json`、`.env*` 和 `*.log`。
+- reviewer 命令以退出码 0 表示通过；当前 MVP 不解析结构化 verdict 文件。
 - 当前 MVP 不包含 HTTP 状态接口、自动 PR、自动 merge、依赖阻塞检查、reconcile loop 或按状态拆分并发限制。
 
 ## 构建与测试

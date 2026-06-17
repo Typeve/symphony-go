@@ -3,6 +3,7 @@ package execution
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,17 @@ import (
 
 	"github.com/local/symphony/internal/domain"
 )
+
+// ErrNoChanges is returned when no allowed files remain staged for commit.
+var ErrNoChanges = errors.New("no allowed changes to commit")
+
+var defaultCommitExcludes = []string{
+	".codex",
+	".codex/**",
+	".symphony/validation-verdict.json",
+	".env*",
+	"*.log",
+}
 
 // BranchName returns a deterministic git branch name for an issue.
 func BranchName(issue domain.Issue) string {
@@ -47,14 +59,13 @@ func CommitAndPush(ctx context.Context, workspace domain.Workspace, branch, toke
 		ctx = context.Background()
 	}
 
-	// Stage all changes.
-	if err := runGit(workspace.Path, "add", "-A"); err != nil {
+	if err := stageAllowedChanges(ctx, workspace.Path); err != nil {
 		return domain.PublishResult{}, err
 	}
 
 	// Commit.
 	msg := fmt.Sprintf("symphony: automated changes for branch %s", branch)
-	if err := runGitCtx(ctx, workspace.Path, "commit", "-m", msg, "--allow-empty"); err != nil {
+	if err := runGitCtx(ctx, workspace.Path, "commit", "-m", msg); err != nil {
 		return domain.PublishResult{}, err
 	}
 
@@ -120,6 +131,42 @@ func runGit(dir string, args ...string) error {
 func runGitCtx(ctx context.Context, dir string, args ...string) error {
 	_, err := gitOutput(ctx, dir, args...)
 	return err
+}
+
+func stageAllowedChanges(ctx context.Context, dir string) error {
+	if err := runGitCtx(ctx, dir, "add", "-A", "--", "."); err != nil {
+		return err
+	}
+	for _, pattern := range defaultCommitExcludes {
+		_ = runGitCtx(ctx, dir, "reset", "-q", "--", pattern)
+	}
+	changed, err := hasStagedChanges(ctx, dir)
+	if err != nil {
+		return err
+	}
+	if !changed {
+		return ErrNoChanges
+	}
+	return nil
+}
+
+func hasStagedChanges(ctx context.Context, dir string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--quiet")
+	cmd.Dir = dir
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return true, nil
+		}
+		text := strings.TrimSpace(out.String())
+		if len(text) > 1024 {
+			text = text[:1024] + "\n[truncated]"
+		}
+		return false, fmt.Errorf("git diff --cached --quiet failed: %w: %s", err, text)
+	}
+	return false, nil
 }
 
 func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {

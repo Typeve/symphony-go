@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/local/symphony/internal/agentenv"
+	"github.com/local/symphony/internal/commandline"
 )
 
 // Run invokes the Claude CLI to review code in the given workspace directory.
@@ -30,12 +31,18 @@ func Run(ctx context.Context, command string, timeout time.Duration, workspace s
 
 	reviewPrompt := "Review the changes in this repository for correctness, bugs, and code quality. Report your findings."
 
-	cmd := exec.CommandContext(ctx, command, "--prompt", reviewPrompt)
+	name, args, err := commandline.Split(command, "claude")
+	if err != nil {
+		return err
+	}
+	args = append(args, "--prompt", reviewPrompt)
+
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workspace
 	cmd.Env = agentenv.Filter(os.Environ())
 
 	slog.Info("running reviewer command",
-		"command", command,
+		"command", name,
 		"workspace", workspace,
 		"timeout", timeout,
 	)
@@ -45,7 +52,7 @@ func Run(ctx context.Context, command string, timeout time.Duration, workspace s
 		if len(text) > 1024 {
 			text = text[:1024] + "...[truncated]"
 		}
-		return fmt.Errorf("reviewer %s failed: %w: %s", command, err, text)
+		return fmt.Errorf("reviewer %s failed: %w: %s", name, err, text)
 	}
 
 	return nil
