@@ -1,17 +1,16 @@
 package workspace
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/local/symphony/internal/domain"
+	"github.com/local/symphony/internal/gitcmd"
 )
 
 // Create prepares a local workspace directory and clones the project repository.
@@ -147,46 +146,9 @@ func cloneRepo(ctx context.Context, repoURL, token, wsPath string) error {
 	u.User = nil
 	cloneURL := u.String()
 
-	cmd := exec.CommandContext(ctx, "git", "clone", cloneURL, wsPath)
-	cmd.Dir = filepath.Dir(wsPath)
-
-	if strings.TrimSpace(token) != "" {
-		cred, cleanup, err := newAskpass(token)
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		cmd.Env = append(os.Environ(), cred...)
-	}
-
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	if err := cmd.Run(); err != nil {
-		text := strings.TrimRight(strings.ReplaceAll(out.String(), token, "[REDACTED]"), "\n")
-		if len(text) > 1024 {
-			text = text[:1024]
-		}
-		return fmt.Errorf("git clone failed: %w: %s", err, text)
+	opts := gitcmd.Options{Dir: filepath.Dir(wsPath), Token: token}
+	if err := gitcmd.Run(ctx, opts, "clone", cloneURL, wsPath); err != nil {
+		return fmt.Errorf("git clone failed: %w", err)
 	}
 	return nil
-}
-
-func newAskpass(token string) ([]string, func(), error) {
-	dir, err := os.MkdirTemp("", "symphony-git-clone-*")
-	if err != nil {
-		return nil, nil, fmt.Errorf("create askpass dir: %w", err)
-	}
-	cleanup := func() { _ = os.RemoveAll(dir) }
-	script := "#!/bin/sh\ncase \"$1\" in *Username*) printf 'oauth2\\n' ;; *) printf '%s\\n' \"$SYMPHONY_GIT_TOKEN\" ;; esac\n"
-	path := dir + "/askpass.sh"
-	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("write askpass script: %w", err)
-	}
-	return []string{
-		"GIT_ASKPASS=" + path,
-		"GIT_TERMINAL_PROMPT=0",
-		"SYMPHONY_GIT_TOKEN=" + token,
-	}, cleanup, nil
 }

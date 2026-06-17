@@ -44,6 +44,10 @@ _Avoid_: best-effort push, self-approved work
 The Gitea token that Symphony reads from the host environment only for tracker writes and Git push operations. It is never passed to Codex, the **Reviewer Command**, issue comments, logs, or Git remote configuration.
 _Avoid_: agent token, workspace credential
 
+**Git Command Runner**:
+The in-process module that runs credentialed Git clone and push commands while keeping **Push Credential** askpass setup, cleanup, token redaction, and bounded diagnostics in one place.
+_Avoid_: clone helper, push helper when referring to shared credentialed Git command behavior
+
 **Agent Environment**:
 The allowlisted environment variables passed to Codex or the **Reviewer Command**. It excludes **Push Credentials** even when those credentials are exported in the Symphony service environment.
 _Avoid_: inherited server environment

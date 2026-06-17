@@ -10,6 +10,7 @@ starting, honor its STOP conditions, and update the status row when done.
 |------|-------|----------|--------|------------|--------|
 | 001 | Harden MVP execution pipeline | P1 | M | - | DONE |
 | 002 | Deepen Task Issue execution pipeline | P1 | M | 001 | DONE |
+| 003 | Unify Git credential runner | P1 | S | 001 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale).
 
@@ -17,6 +18,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 - 001 should land before any feature expansion. It protects the core Gitea issue -> Codex -> reviewer -> execution branch path from committing sensitive agent artifacts, failing silently, or drifting from the documented MVP contract.
 - 002 should land after 001 because it preserves the hardened command, credential, failure, and commit behavior while moving per-issue execution behind one deeper Module.
+- 003 should land after 001 because it preserves the hardened Push Credential behavior while removing duplicated askpass and redaction implementations from clone and push paths.
 
 ## Findings Considered And Rejected
 
