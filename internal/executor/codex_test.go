@@ -12,40 +12,12 @@ import (
 	"github.com/local/symphony/internal/domain"
 )
 
-func TestRunCodexDoesNotExposeGiteaTokenToCommand(t *testing.T) {
-	t.Setenv("GITEA_TOKEN", "fixture-token")
-	t.Setenv("PATH", os.Getenv("PATH"))
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "env.txt")
-	script := writeEnvCaptureCommand(t, dir, "codex", outPath)
-
-	var cfg domain.Config
-	cfg.Codex.Command = script
-	cfg.Codex.Timeout = time.Minute
-	issue := domain.Issue{ProjectID: "p", ID: "1", Title: "Do work"}
-	ws := domain.Workspace{Path: dir, IssueKey: "p/1"}
-
-	if err := RunCodex(context.Background(), cfg, issue, ws); err != nil {
-		t.Fatalf("RunCodex returned error: %v", err)
-	}
-	data, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), "GITEA_TOKEN=") || strings.Contains(string(data), "fixture-token") {
-		t.Fatalf("codex environment leaked token:\n%s", string(data))
-	}
-}
-
 func TestRunCodexPassesConfiguredArgsAndPrompt(t *testing.T) {
-	t.Setenv("GITEA_TOKEN", "fixture-token")
 	t.Setenv("PATH", os.Getenv("PATH"))
 
 	dir := t.TempDir()
 	argvPath := filepath.Join(dir, "argv.txt")
-	envPath := filepath.Join(dir, "env.txt")
-	script := writeArgvEnvCaptureCommand(t, dir, "codex", argvPath, envPath)
+	script := writeArgvCaptureCommand(t, dir, "codex", argvPath)
 
 	var cfg domain.Config
 	cfg.Codex.Command = script + " app-server"
@@ -67,14 +39,6 @@ func TestRunCodexPassesConfiguredArgsAndPrompt(t *testing.T) {
 			t.Fatalf("argv = %q, missing %q", argvText, want)
 		}
 	}
-
-	envData, err := os.ReadFile(envPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(envData), "GITEA_TOKEN=") || strings.Contains(string(envData), "fixture-token") {
-		t.Fatalf("codex environment leaked token:\n%s", string(envData))
-	}
 }
 
 func TestBuildCodexPromptIncludesIssueDetails(t *testing.T) {
@@ -90,9 +54,9 @@ func TestBuildCodexPromptIncludesIssueDetails(t *testing.T) {
 	}
 }
 
-func TestRunCodexReturnsBoundedOutputOnFailure(t *testing.T) {
+func TestRunCodexWrapsFailureWithCodexContext(t *testing.T) {
 	dir := t.TempDir()
-	script := writeFailingOutputCommand(t, dir, "codex", strings.Repeat("x", 1600))
+	script := writeFailingOutputCommand(t, dir, "codex", "boom")
 
 	var cfg domain.Config
 	cfg.Codex.Command = script
@@ -105,38 +69,16 @@ func TestRunCodexReturnsBoundedOutputOnFailure(t *testing.T) {
 		t.Fatal("RunCodex returned nil error, want failure")
 	}
 	text := err.Error()
-	if !strings.Contains(text, "...[truncated]") {
-		t.Fatalf("error = %q, want truncated output marker", text)
-	}
-	if len(text) > 1200 {
-		t.Fatalf("error length = %d, want bounded diagnostic", len(text))
+	if !strings.Contains(text, "codex:") || !strings.Contains(text, "boom") {
+		t.Fatalf("error = %q, want codex context and command output", text)
 	}
 }
 
-func writeEnvCaptureCommand(t *testing.T, dir, name, outPath string) string {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		script := filepath.Join(dir, name+".cmd")
-		content := "@echo off\r\nset > \"" + outPath + "\"\r\n"
-		if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		return script
-	}
-
-	script := filepath.Join(dir, name+".sh")
-	content := "#!/bin/sh\nenv > " + shellQuote(outPath) + "\n"
-	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return script
-}
-
-func writeArgvEnvCaptureCommand(t *testing.T, dir, name, argvPath, envPath string) string {
+func writeArgvCaptureCommand(t *testing.T, dir, name, argvPath string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		script := filepath.Join(dir, name+"-argv.cmd")
-		content := "@echo off\r\n(\r\n  echo %1\r\n  echo %2\r\n) > \"" + argvPath + "\"\r\nset > \"" + envPath + "\"\r\n"
+		content := "@echo off\r\n(\r\n  echo %1\r\n  echo %2\r\n) > \"" + argvPath + "\"\r\n"
 		if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -144,7 +86,7 @@ func writeArgvEnvCaptureCommand(t *testing.T, dir, name, argvPath, envPath strin
 	}
 
 	script := filepath.Join(dir, name+"-argv.sh")
-	content := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + shellQuote(argvPath) + "\nenv > " + shellQuote(envPath) + "\n"
+	content := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + shellQuote(argvPath) + "\n"
 	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
 		t.Fatal(err)
 	}

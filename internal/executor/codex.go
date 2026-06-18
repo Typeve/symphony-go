@@ -1,47 +1,24 @@
 package executor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 
-	"github.com/local/symphony/internal/agentenv"
-	"github.com/local/symphony/internal/commandline"
+	"github.com/local/symphony/internal/agentcmd"
 	"github.com/local/symphony/internal/domain"
 )
 
 // RunCodex executes the configured Codex command inside the workspace.
 func RunCodex(ctx context.Context, cfg domain.Config, issue domain.Issue, ws domain.Workspace) error {
-	ctx, cancel := context.WithTimeout(ctx, cfg.Codex.Timeout)
-	defer cancel()
-
 	prompt := buildCodexPrompt(issue)
-
-	name, args, err := commandline.Split(cfg.Codex.Command, "codex")
-	if err != nil {
-		return err
-	}
-	args = append(args, "--prompt", prompt)
-
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = ws.Path
-	cmd.Env = agentenv.Filter(os.Environ())
-
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-
-	if err := cmd.Run(); err != nil {
-		text := strings.TrimSpace(out.String())
-		if len(text) > 1024 {
-			text = text[:1024] + "...[truncated]"
-		}
-		if text != "" {
-			return fmt.Errorf("codex: %w: %s", err, text)
-		}
+	if err := agentcmd.Run(ctx, agentcmd.Spec{
+		Command:        cfg.Codex.Command,
+		DefaultCommand: "codex",
+		Timeout:        cfg.Codex.Timeout,
+		Workspace:      ws.Path,
+		Prompt:         prompt,
+	}); err != nil {
 		return fmt.Errorf("codex: %w", err)
 	}
 	return nil

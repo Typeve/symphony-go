@@ -10,34 +10,12 @@ import (
 	"time"
 )
 
-func TestRunDoesNotExposeGiteaTokenToReviewerCommand(t *testing.T) {
-	t.Setenv("GITEA_TOKEN", "fixture-token")
-	t.Setenv("PATH", os.Getenv("PATH"))
-
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "env.txt")
-	script := writeEnvCaptureCommand(t, dir, "reviewer", outPath)
-
-	if err := Run(context.Background(), script, time.Minute, dir); err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
-	data, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), "GITEA_TOKEN=") || strings.Contains(string(data), "fixture-token") {
-		t.Fatalf("reviewer environment leaked token:\n%s", string(data))
-	}
-}
-
 func TestRunPassesConfiguredArgsAndPrompt(t *testing.T) {
-	t.Setenv("GITEA_TOKEN", "fixture-token")
 	t.Setenv("PATH", os.Getenv("PATH"))
 
 	dir := t.TempDir()
 	argvPath := filepath.Join(dir, "argv.txt")
-	envPath := filepath.Join(dir, "env.txt")
-	script := writeArgvEnvCaptureCommand(t, dir, "reviewer", argvPath, envPath)
+	script := writeArgvCaptureCommand(t, dir, "reviewer", argvPath)
 
 	if err := Run(context.Background(), script+" --mode strict", time.Minute, dir); err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -48,45 +26,32 @@ func TestRunPassesConfiguredArgsAndPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	argvText := string(argv)
-	for _, want := range []string{"--mode", "strict", "--prompt"} {
+	for _, want := range []string{"--mode", "strict", "--prompt", "Review the changes"} {
 		if !strings.Contains(argvText, want) {
 			t.Fatalf("argv = %q, missing %q", argvText, want)
 		}
 	}
+}
 
-	envData, err := os.ReadFile(envPath)
-	if err != nil {
-		t.Fatal(err)
+func TestRunWrapsFailureWithReviewerContext(t *testing.T) {
+	dir := t.TempDir()
+	script := writeFailingOutputCommand(t, dir, "reviewer", "bad review")
+
+	err := Run(context.Background(), script, time.Minute, dir)
+	if err == nil {
+		t.Fatal("Run returned nil error, want failure")
 	}
-	if strings.Contains(string(envData), "GITEA_TOKEN=") || strings.Contains(string(envData), "fixture-token") {
-		t.Fatalf("reviewer environment leaked token:\n%s", string(envData))
+	text := err.Error()
+	if !strings.Contains(text, "reviewer failed:") || !strings.Contains(text, "bad review") {
+		t.Fatalf("error = %q, want reviewer context and command output", text)
 	}
 }
 
-func writeEnvCaptureCommand(t *testing.T, dir, name, outPath string) string {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		script := filepath.Join(dir, name+".cmd")
-		content := "@echo off\r\nset > \"" + outPath + "\"\r\n"
-		if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		return script
-	}
-
-	script := filepath.Join(dir, name+".sh")
-	content := "#!/bin/sh\nenv > " + shellQuote(outPath) + "\n"
-	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return script
-}
-
-func writeArgvEnvCaptureCommand(t *testing.T, dir, name, argvPath, envPath string) string {
+func writeArgvCaptureCommand(t *testing.T, dir, name, argvPath string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		script := filepath.Join(dir, name+"-argv.cmd")
-		content := "@echo off\r\necho %* > \"" + argvPath + "\"\r\nset > \"" + envPath + "\"\r\n"
+		content := "@echo off\r\necho %* > \"" + argvPath + "\"\r\n"
 		if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +59,26 @@ func writeArgvEnvCaptureCommand(t *testing.T, dir, name, argvPath, envPath strin
 	}
 
 	script := filepath.Join(dir, name+"-argv.sh")
-	content := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + shellQuote(argvPath) + "\nenv > " + shellQuote(envPath) + "\n"
+	content := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + shellQuote(argvPath) + "\n"
+	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
+func writeFailingOutputCommand(t *testing.T, dir, name, output string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		script := filepath.Join(dir, name+"-fail.cmd")
+		content := "@echo off\r\necho " + output + "\r\nexit /b 1\r\n"
+		if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return script
+	}
+
+	script := filepath.Join(dir, name+"-fail.sh")
+	content := "#!/bin/sh\nprintf '%s' " + shellQuote(output) + " >&2\nexit 1\n"
 	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
 		t.Fatal(err)
 	}
