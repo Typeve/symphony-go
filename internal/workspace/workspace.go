@@ -6,11 +6,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/local/symphony/internal/domain"
 	"github.com/local/symphony/internal/gitcmd"
+	"github.com/local/symphony/internal/issueidentity"
 )
 
 // Create prepares a local workspace directory and clones the project repository.
@@ -20,7 +20,7 @@ func Create(ctx context.Context, issue domain.Issue, cfg domain.Config) (domain.
 		return domain.Workspace{}, err
 	}
 
-	key := workspaceKey(issue)
+	key := issueidentity.For(issue).WorkspaceKey()
 	wsPath := filepath.Join(cfg.Workspace.Root, key)
 
 	if err := os.MkdirAll(cfg.Workspace.Root, 0o755); err != nil {
@@ -52,10 +52,6 @@ func Clean(ctx context.Context, ws domain.Workspace) error {
 	return os.RemoveAll(ws.Path)
 }
 
-// --- helpers ---
-
-var numberRe = regexp.MustCompile(`(\d+)`)
-
 func findProject(issue domain.Issue, cfg domain.Config) (domain.ProjectConfig, error) {
 	pid := strings.TrimSpace(issue.ProjectID)
 	if pid == "" {
@@ -67,57 +63,6 @@ func findProject(issue domain.Issue, cfg domain.Config) (domain.ProjectConfig, e
 		}
 	}
 	return domain.ProjectConfig{}, fmt.Errorf("project %q not found in config", pid)
-}
-
-func workspaceKey(issue domain.Issue) string {
-	pid := strings.TrimSpace(issue.ProjectID)
-	if pid == "" {
-		pid = "unknown"
-	}
-	num := "0"
-	for _, v := range []string{issue.SourceID, issue.ID, issue.Identifier} {
-		if m := numberRe.FindString(strings.TrimSpace(v)); m != "" {
-			num = m
-			break
-		}
-	}
-	slug := slugify(issue.Title)
-	if slug == "" {
-		slug = "task"
-	}
-	if len(slug) > 48 {
-		slug = strings.Trim(slug[:48], "-")
-	}
-	return filepath.Join(sanitize(pid), "issue-"+num+"-"+slug)
-}
-
-func sanitize(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
-			b.WriteRune(r)
-		} else {
-			b.WriteByte('_')
-		}
-	}
-	return b.String()
-}
-
-func slugify(value string) string {
-	var b strings.Builder
-	lastDash := false
-	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
-		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
-			b.WriteRune(r)
-			lastDash = false
-			continue
-		}
-		if !lastDash {
-			b.WriteByte('-')
-			lastDash = true
-		}
-	}
-	return strings.Trim(b.String(), "-")
 }
 
 func hasGitDir(dir string) bool {
