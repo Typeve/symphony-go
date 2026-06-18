@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -77,7 +76,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 // poll fetches issues from all projects and dispatches pending ones.
 func (s *Scheduler) poll(ctx context.Context) {
 	for _, proj := range s.Config.Gitea.Projects {
-		issues, err := s.Tracker.FetchIssues(ctx, proj)
+		issues, err := s.Tracker.FetchPendingIssues(ctx, proj)
 		if err != nil {
 			slog.Error("fetch issues failed",
 				"project", proj.ID,
@@ -88,9 +87,6 @@ func (s *Scheduler) poll(ctx context.Context) {
 
 		dispatched := 0
 		for _, issue := range issues {
-			if !s.isPending(issue) {
-				continue
-			}
 			// Try to acquire a concurrency slot.
 			select {
 			case s.sem <- struct{}{}:
@@ -117,45 +113,4 @@ func (s *Scheduler) poll(ctx context.Context) {
 			)
 		}
 	}
-}
-
-// isPending checks if an issue is in a state that should be processed.
-func (s *Scheduler) isPending(issue domain.Issue) bool {
-	proj, ok := s.findProject(issue)
-	if !ok {
-		return false
-	}
-	if hasManagedStatusLabel(issue.Labels) {
-		return false
-	}
-	activeStates := proj.ActiveStates
-	if len(activeStates) == 0 {
-		activeStates = []string{"open"}
-	}
-	for _, active := range activeStates {
-		if strings.EqualFold(strings.TrimSpace(issue.State), strings.TrimSpace(active)) {
-			return true
-		}
-	}
-	return false
-}
-
-// findProject returns the ProjectConfig for the given issue.
-func (s *Scheduler) findProject(issue domain.Issue) (domain.ProjectConfig, bool) {
-	for _, p := range s.Config.Gitea.Projects {
-		if strings.EqualFold(strings.TrimSpace(p.ID), strings.TrimSpace(issue.ProjectID)) {
-			return p, true
-		}
-	}
-	return domain.ProjectConfig{}, false
-}
-
-func hasManagedStatusLabel(labels []string) bool {
-	for _, label := range labels {
-		switch strings.ToLower(strings.TrimSpace(label)) {
-		case "symphony-running", "symphony-done", "symphony-failed":
-			return true
-		}
-	}
-	return false
 }

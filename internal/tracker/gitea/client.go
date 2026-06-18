@@ -65,8 +65,10 @@ func splitSlug(slug string) (string, string) {
 	return parts[0], parts[1]
 }
 
-// FetchIssues fetches open issues from the Gitea repo associated with the project.
-func (c *Client) FetchIssues(ctx context.Context, project domain.ProjectConfig) ([]domain.Issue, error) {
+// FetchPendingIssues fetches Task Issues from the Gitea repo associated with
+// the Managed Project, restricted to configured active states and excluding
+// issues that already carry a Completion Marker.
+func (c *Client) FetchPendingIssues(ctx context.Context, project domain.ProjectConfig) ([]domain.Issue, error) {
 	owner, repo := splitSlug(c.repos[project.ID])
 	if owner == "" || repo == "" {
 		owner, repo = splitSlug(repoSlug(project.RepoURL))

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/local/symphony/internal/domain"
@@ -9,9 +10,13 @@ import (
 
 type testTracker struct {
 	issues []domain.Issue
+	err    error
 }
 
-func (t testTracker) FetchIssues(context.Context, domain.ProjectConfig) ([]domain.Issue, error) {
+func (t testTracker) FetchPendingIssues(context.Context, domain.ProjectConfig) ([]domain.Issue, error) {
+	if t.err != nil {
+		return nil, t.err
+	}
 	return t.issues, nil
 }
 func (testTracker) MarkStatus(context.Context, domain.Issue, domain.Status) error { return nil }
@@ -28,9 +33,9 @@ func (r *recordingRunner) Process(_ context.Context, issue domain.Issue, project
 
 func TestPollDispatchesPendingIssueToRunner(t *testing.T) {
 	var cfg domain.Config
-	project := domain.ProjectConfig{ID: "p", ActiveStates: []string{"open"}}
+	project := domain.ProjectConfig{ID: "p"}
 	cfg.Gitea.Projects = []domain.ProjectConfig{project}
-	issue := domain.Issue{ProjectID: "p", ID: "1", Identifier: "acme/app#1", Title: "Do work", State: "open"}
+	issue := domain.Issue{ProjectID: "p", ID: "1", Identifier: "acme/app#1", Title: "Do work"}
 	runner := &recordingRunner{}
 	s := New(cfg, testTracker{issues: []domain.Issue{issue}})
 	s.runner = runner
@@ -46,26 +51,37 @@ func TestPollDispatchesPendingIssueToRunner(t *testing.T) {
 	}
 }
 
-func TestIsPendingDefaultsToOpenIssueWhenActiveStatesEmpty(t *testing.T) {
+func TestPollDoesNotDispatchWhenFetchPendingIssuesFails(t *testing.T) {
 	var cfg domain.Config
 	cfg.Gitea.Projects = []domain.ProjectConfig{{ID: "p"}}
-	s := New(cfg, testTracker{})
+	runner := &recordingRunner{}
+	s := New(cfg, testTracker{err: errors.New("tracker unavailable")})
+	s.runner = runner
 
-	issue := domain.Issue{ProjectID: "p", ID: "1", State: "open"}
-	if !s.isPending(issue) {
-		t.Fatal("open issue with empty active_states is not pending")
+	s.poll(context.Background())
+	s.wg.Wait()
+
+	if len(runner.issues) != 0 {
+		t.Fatalf("runner issues = %#v, want no dispatch", runner.issues)
 	}
 }
 
-func TestIsPendingSkipsManagedStatusLabels(t *testing.T) {
+func TestPollDoesNotDispatchWhenConcurrencySlotUnavailable(t *testing.T) {
 	var cfg domain.Config
-	cfg.Gitea.Projects = []domain.ProjectConfig{{ID: "p", ActiveStates: []string{"open"}}}
-	s := New(cfg, testTracker{})
+	cfg.Scheduler.MaxConcurrent = 1
+	cfg.Gitea.Projects = []domain.ProjectConfig{{ID: "p"}}
+	issue := domain.Issue{ProjectID: "p", ID: "1", Identifier: "acme/app#1", Title: "Do work"}
+	runner := &recordingRunner{}
+	s := New(cfg, testTracker{issues: []domain.Issue{issue}})
+	s.runner = runner
 
-	for _, label := range []string{"symphony-running", "symphony-done", "symphony-failed"} {
-		issue := domain.Issue{ProjectID: "p", ID: "1", State: "open", Labels: []string{label}}
-		if s.isPending(issue) {
-			t.Fatalf("issue with %s label is pending", label)
-		}
+	s.sem <- struct{}{}
+	defer func() { <-s.sem }()
+
+	s.poll(context.Background())
+	s.wg.Wait()
+
+	if len(runner.issues) != 0 {
+		t.Fatalf("runner issues = %#v, want no dispatch", runner.issues)
 	}
 }

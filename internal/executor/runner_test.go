@@ -14,7 +14,7 @@ type recordingTracker struct {
 	statuses []domain.Status
 }
 
-func (r *recordingTracker) FetchIssues(context.Context, domain.ProjectConfig) ([]domain.Issue, error) {
+func (r *recordingTracker) FetchPendingIssues(context.Context, domain.ProjectConfig) ([]domain.Issue, error) {
 	return nil, nil
 }
 

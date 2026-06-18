@@ -12,7 +12,7 @@ import (
 	"github.com/local/symphony/internal/domain"
 )
 
-func TestFetchIssuesSkipsManagedStatusLabels(t *testing.T) {
+func TestFetchPendingIssuesSkipsManagedStatusLabels(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/repos/acme/app/issues" {
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
@@ -32,16 +32,16 @@ func TestFetchIssuesSkipsManagedStatusLabels(t *testing.T) {
 	project := domain.ProjectConfig{ID: "p", RepoURL: "https://gitea.example.com/acme/app.git"}
 	client := New(server.URL, "token", []domain.ProjectConfig{project}, server.Client())
 
-	issues, err := client.FetchIssues(context.Background(), project)
+	issues, err := client.FetchPendingIssues(context.Background(), project)
 	if err != nil {
-		t.Fatalf("FetchIssues returned error: %v", err)
+		t.Fatalf("FetchPendingIssues returned error: %v", err)
 	}
 	if len(issues) != 1 || issues[0].ID != "1" {
 		t.Fatalf("issues = %#v, want only issue 1", issues)
 	}
 }
 
-func TestFetchIssuesRejectsInvalidActiveStates(t *testing.T) {
+func TestFetchPendingIssuesRejectsInvalidActiveStates(t *testing.T) {
 	project := domain.ProjectConfig{
 		ID:           "p",
 		RepoURL:      "https://gitea.example.com/acme/app.git",
@@ -49,12 +49,65 @@ func TestFetchIssuesRejectsInvalidActiveStates(t *testing.T) {
 	}
 	client := New("https://gitea.example.com", "token", []domain.ProjectConfig{project}, nil)
 
-	_, err := client.FetchIssues(context.Background(), project)
+	_, err := client.FetchPendingIssues(context.Background(), project)
 	if err == nil {
-		t.Fatal("FetchIssues returned nil error, want invalid active_states error")
+		t.Fatal("FetchPendingIssues returned nil error, want invalid active_states error")
 	}
 	if !strings.Contains(err.Error(), "active_states") || !strings.Contains(err.Error(), "open") {
 		t.Fatalf("error = %q, want clear active_states guidance", err.Error())
+	}
+}
+
+func TestFetchPendingIssuesUsesActiveStatesDedupesAndSkipsPullRequests(t *testing.T) {
+	var states []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/repos/acme/app/issues" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+		state := r.URL.Query().Get("state")
+		states = append(states, state)
+		switch state {
+		case "open":
+			_ = json.NewEncoder(w).Encode([]giteaIssue{
+				{Number: 10, Title: "ready", State: "open"},
+				{Number: 11, Title: "pull request", State: "open", PullRequest: map[string]any{}},
+			})
+		case "closed":
+			_ = json.NewEncoder(w).Encode([]giteaIssue{
+				{Number: 10, Title: "ready duplicate", State: "closed"},
+				{Number: 12, Title: "closed ready", State: "closed"},
+			})
+		default:
+			t.Fatalf("unexpected state query %q", state)
+		}
+	}))
+	defer server.Close()
+
+	project := domain.ProjectConfig{
+		ID:           "p",
+		RepoURL:      "https://gitea.example.com/acme/app.git",
+		ActiveStates: []string{"open", "OPEN", "closed"},
+	}
+	client := New(server.URL, "token", []domain.ProjectConfig{project}, server.Client())
+
+	issues, err := client.FetchPendingIssues(context.Background(), project)
+	if err != nil {
+		t.Fatalf("FetchPendingIssues returned error: %v", err)
+	}
+	if !reflect.DeepEqual(states, []string{"open", "closed"}) {
+		t.Fatalf("states = %#v, want open then closed", states)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("issues = %#v, want two pending issues", issues)
+	}
+	gotIDs := []string{issues[0].ID, issues[1].ID}
+	if !reflect.DeepEqual(gotIDs, []string{"10", "12"}) {
+		t.Fatalf("issue IDs = %#v, want 10 and 12", gotIDs)
+	}
+	for _, issue := range issues {
+		if issue.ProjectID != "p" {
+			t.Fatalf("issue ProjectID = %q, want p", issue.ProjectID)
+		}
 	}
 }
 
