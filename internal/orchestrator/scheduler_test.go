@@ -33,6 +33,7 @@ func (r *recordingRunner) Process(_ context.Context, issue domain.Issue, project
 
 func TestPollDispatchesPendingIssueToRunner(t *testing.T) {
 	var cfg domain.Config
+	cfg.Scheduler.MaxConcurrent = 1
 	project := domain.ProjectConfig{ID: "p"}
 	cfg.Gitea.Projects = []domain.ProjectConfig{project}
 	issue := domain.Issue{ProjectID: "p", ID: "1", Identifier: "acme/app#1", Title: "Do work"}
@@ -53,6 +54,7 @@ func TestPollDispatchesPendingIssueToRunner(t *testing.T) {
 
 func TestPollDoesNotDispatchWhenFetchPendingIssuesFails(t *testing.T) {
 	var cfg domain.Config
+	cfg.Scheduler.MaxConcurrent = 1
 	cfg.Gitea.Projects = []domain.ProjectConfig{{ID: "p"}}
 	runner := &recordingRunner{}
 	s := New(cfg, testTracker{err: errors.New("tracker unavailable")})

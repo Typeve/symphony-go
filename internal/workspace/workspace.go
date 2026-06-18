@@ -20,15 +20,10 @@ func Create(ctx context.Context, issue domain.Issue, cfg domain.Config) (domain.
 		return domain.Workspace{}, err
 	}
 
-	root := strings.TrimSpace(cfg.Workspace.Root)
-	if root == "" {
-		root = filepath.Join(os.TempDir(), "symphony-workspaces")
-	}
-
 	key := workspaceKey(issue)
-	wsPath := filepath.Join(root, key)
+	wsPath := filepath.Join(cfg.Workspace.Root, key)
 
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.Workspace.Root, 0o755); err != nil {
 		return domain.Workspace{}, fmt.Errorf("create workspace root: %w", err)
 	}
 

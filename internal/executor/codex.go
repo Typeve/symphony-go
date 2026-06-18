@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/local/symphony/internal/agentenv"
 	"github.com/local/symphony/internal/commandline"
@@ -16,21 +15,12 @@ import (
 
 // RunCodex executes the configured Codex command inside the workspace.
 func RunCodex(ctx context.Context, cfg domain.Config, issue domain.Issue, ws domain.Workspace) error {
-	cmdStr := strings.TrimSpace(cfg.Codex.Command)
-	if cmdStr == "" {
-		cmdStr = "codex"
-	}
-
-	timeout := cfg.Codex.Timeout
-	if timeout <= 0 {
-		timeout = 30 * time.Minute
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(ctx, cfg.Codex.Timeout)
 	defer cancel()
 
 	prompt := buildCodexPrompt(issue)
 
-	name, args, err := commandline.Split(cmdStr, "codex")
+	name, args, err := commandline.Split(cfg.Codex.Command, "codex")
 	if err != nil {
 		return err
 	}

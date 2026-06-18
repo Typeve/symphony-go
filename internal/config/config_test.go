@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadExpandsEnvironmentAndValidatesRequiredFields(t *testing.T) {
@@ -27,6 +28,78 @@ gitea:
 	}
 	if len(cfg.Gitea.Projects) != 1 || cfg.Gitea.Projects[0].ID != "app" {
 		t.Fatalf("projects = %#v, want configured app project", cfg.Gitea.Projects)
+	}
+}
+
+func TestLoadResolvesRuntimeDefaults(t *testing.T) {
+	path := writeConfig(t, `
+gitea:
+  endpoint: "https://gitea.example.com"
+  token: "fixture-token"
+  projects:
+    - id: "app"
+      repo_url: "https://gitea.example.com/acme/app.git"
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Scheduler.PollInterval != 30*time.Second {
+		t.Fatalf("poll interval = %s, want 30s", cfg.Scheduler.PollInterval)
+	}
+	if cfg.Scheduler.MaxConcurrent != 1 {
+		t.Fatalf("max concurrent = %d, want 1", cfg.Scheduler.MaxConcurrent)
+	}
+	if cfg.Codex.Command != "codex" || cfg.Codex.Timeout != 30*time.Minute {
+		t.Fatalf("codex config = %#v, want default command and timeout", cfg.Codex)
+	}
+	if cfg.Reviewer.Command != "claude" || cfg.Reviewer.Timeout != 15*time.Minute {
+		t.Fatalf("reviewer config = %#v, want default command and timeout", cfg.Reviewer)
+	}
+	wantRoot := filepath.Join(os.TempDir(), "symphony-workspaces")
+	if cfg.Workspace.Root != wantRoot {
+		t.Fatalf("workspace root = %q, want %q", cfg.Workspace.Root, wantRoot)
+	}
+}
+
+func TestLoadPreservesConfiguredRuntimeValues(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspaces")
+	path := writeConfig(t, `
+gitea:
+  endpoint: "https://gitea.example.com"
+  token: "fixture-token"
+  projects:
+    - id: "app"
+      repo_url: "https://gitea.example.com/acme/app.git"
+scheduler:
+  poll_interval: 5s
+  max_concurrent: 2
+codex:
+  command: " codex app-server "
+  timeout: 2m
+reviewer:
+  command: " claude --strict "
+  timeout: 45s
+workspace:
+  root: ' `+root+` '
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Scheduler.PollInterval != 5*time.Second || cfg.Scheduler.MaxConcurrent != 2 {
+		t.Fatalf("scheduler config = %#v, want configured values", cfg.Scheduler)
+	}
+	if cfg.Codex.Command != "codex app-server" || cfg.Codex.Timeout != 2*time.Minute {
+		t.Fatalf("codex config = %#v, want configured values", cfg.Codex)
+	}
+	if cfg.Reviewer.Command != "claude --strict" || cfg.Reviewer.Timeout != 45*time.Second {
+		t.Fatalf("reviewer config = %#v, want configured values", cfg.Reviewer)
+	}
+	if cfg.Workspace.Root != root {
+		t.Fatalf("workspace root = %q, want %q", cfg.Workspace.Root, root)
 	}
 }
 

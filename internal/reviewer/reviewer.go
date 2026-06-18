@@ -17,15 +17,6 @@ import (
 // command is the CLI binary (e.g. "claude"), timeout is the max duration, and
 // workspace is the absolute path to the directory to review.
 func Run(ctx context.Context, command string, timeout time.Duration, workspace string) error {
-	command = strings.TrimSpace(command)
-	if command == "" {
-		command = "claude"
-	}
-
-	if timeout <= 0 {
-		timeout = 15 * time.Minute
-	}
-
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 

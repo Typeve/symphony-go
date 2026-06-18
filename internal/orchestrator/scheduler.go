@@ -31,24 +31,17 @@ func New(cfg domain.Config, tr tracker.Client) *Scheduler {
 	if tr == nil {
 		panic("orchestrator: tracker client is required")
 	}
-	max := cfg.Scheduler.MaxConcurrent
-	if max <= 0 {
-		max = 1
-	}
 	return &Scheduler{
 		Config:  cfg,
 		Tracker: tr,
 		runner:  executor.New(cfg, tr),
-		sem:     make(chan struct{}, max),
+		sem:     make(chan struct{}, cfg.Scheduler.MaxConcurrent),
 	}
 }
 
 // Run starts the poll loop. It blocks until ctx is cancelled.
 func (s *Scheduler) Run(ctx context.Context) error {
 	interval := s.Config.Scheduler.PollInterval
-	if interval <= 0 {
-		interval = 30 * time.Second
-	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
