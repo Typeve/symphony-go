@@ -1,65 +1,84 @@
----
-projects:
-  - id: example-project
-    enabled: true
-    tracker:
-      kind: gitea
-      endpoint: https://gitea.example.com
-      api_key: $GITEA_TOKEN
-      owner: example-owner
-      repo: example-repo
-    filters:
-      states:
-        - open
+# Symphony 工作流
+
+本文描述当前简化 MVP 的运行契约。Symphony 不再把 `WORKFLOW.md` 当作运行时配置或 prompt 模板读取；二进制默认读取 `symphony.yaml`，也可通过 `-config` 指定配置文件。
+
+## 执行流程
+
+```text
+Gitea open issue
+-> 过滤已有管理状态 label 的 issue
+-> 创建本地 workspace 并 clone 配置的仓库
+-> 创建 deterministic execution branch
+-> 运行 Codex 命令
+-> 运行 reviewer 命令
+-> reviewer 退出码为 0 后提交并推送 execution branch
+-> 写回 Gitea 状态 label 和 comment
+```
+
+管理状态 label 只有：
+
+- `symphony-running`
+- `symphony-done`
+- `symphony-failed`
+
+带有以上任一 label 的 open issue 会被跳过，避免重复派发。
+
+## 配置
+
+推荐配置文件名是 `symphony.yaml`：
+
+```yaml
+gitea:
+  endpoint: "https://gitea.example.com"
+  token: "${GITEA_TOKEN}"
+  projects:
+    - id: "my-project"
+      repo_url: "https://gitea.example.com/owner/repo.git"
+      active_states: ["open"]
+
 scheduler:
-  polling_interval_ms: 5000
-workspace:
-  root: /tmp/symphony-workspaces
-  allow_git_remote_credentials: false
-completion:
-  enabled: true
-  label: symphony-completed
-  comment: 任务已完成处理，后续不会重复派发。
-hooks:
-  timeout_ms: 60000
-  after_create: |
-    if [ ! -d .git ]; then
-      git clone --depth 1 "https://gitea.example.com/example-owner/example-repo.git" . 2>&1
-      git remote set-url origin "https://gitea.example.com/example-owner/example-repo.git"
-    fi
-agent:
-  max_concurrent_agents: 2
-  max_turns: 20
-  max_retry_backoff_ms: 300000
-  max_concurrent_agents_by_state:
-    open: 2
+  poll_interval: 30s
+  max_concurrent: 2
+
 codex:
-  command: codex app-server
-  approval_policy: on-request
-  thread_sandbox: workspace-write
-  turn_sandbox_policy: workspace-write
-  env_allowlist:
-    - PATH
-    - HOME
-    - SHELL
-  turn_timeout_ms: 3600000
-  read_timeout_ms: 5000
-  stall_timeout_ms: 300000
-repair:
-  enabled: true
-  max_attempts: 1
----
-你将处理一个任务。请只依据任务本身和仓库中的真实代码开展工作。
+  command: "codex"
+  model: "gpt-5.5"
+  timeout: 30m
 
-任务信息：
-- 标题：{{ .issue.title }}
-- 描述：{{ .issue.description }}
-- 标签：{{ range .issue.labels }}{{ . }} {{ else }}无{{ end }}
-- 阻塞项：{{ range .issue.blocked_by }}{{ .identifier }}（{{ .state }}） {{ else }}无{{ end }}
+reviewer:
+  command: "claude"
+  timeout: 15m
 
-工作要求：
-1. 先理解标题、描述、标签和阻塞关系，确认任务可以安全推进。
-2. 修改代码前优先补充或更新能够说明目标行为的验证。
-3. 所有失败都要清晰暴露，不使用伪造结果，也不隐藏真实错误。
-4. 面向用户或操作者的说明要自然、清晰、业务化，不描述运行环境、调度状态或实现细节。
-5. 完成后给出已验证的命令和结果，并说明仍需人工关注的风险。
+workspace:
+  root: "/tmp/symphony-workspaces"
+```
+
+`gitea.token` 可以使用环境变量展开。不要把真实 token 提交到仓库。
+
+## 成功与失败语义
+
+- `symphony-running`：Symphony 已接管该 issue。
+- `symphony-done`：Codex、reviewer、commit、push 均已成功，execution branch 已可供人工 review。
+- `symphony-failed`：某个阶段失败，需要人工检查日志、issue comment 和保留的 workspace。
+
+`symphony-done` 不表示 PR 已创建、分支已合并或 issue 已关闭。
+
+## 安全边界
+
+- `GITEA_TOKEN` 只给 Symphony 用于 tracker 写回和 Git push，不传给 Codex 或 reviewer。
+- Git clone 和 push 通过临时 `GIT_ASKPASS` 提供凭据，不把 token 写进 remote URL。
+- execution commit 会排除 `.codex/**`、`.symphony/validation-verdict.json`、`.env*` 和 `*.log`。
+- reviewer 通过退出码控制 publish gate：0 表示通过，非 0 表示失败。
+
+## 人工恢复
+
+失败后先查看 issue comment 和服务日志，再进入保留的 workspace 检查现场。确认可以重跑时，人工移除对应管理状态 label，等待下一轮轮询重新派发。
+
+## 发布前验证
+
+```bash
+go test -count=1 ./...
+go vet ./...
+go build ./cmd/symphony
+git diff --check
+```
