@@ -48,6 +48,7 @@ internal/workspace/workspace.go # workspace 创建/清理
 - `CONTEXT.md` — 领域术语和设计约束
 - `WORKFLOW.md` — 工作流说明
 - `WORKFLOW.example.md` — 配置示例
+- `docs/plans/`、`docs/superpowers/plans/` — 2026-05 历史设计/执行计划，只作背景；已被当前 Gitea-only MVP 和 `plans/README.md` 取代，禁止作为新实现依据
 
 ## 常用验证
 
