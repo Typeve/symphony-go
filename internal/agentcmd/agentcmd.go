@@ -19,6 +19,7 @@ const maxOutput = 1024
 type Spec struct {
 	Command        string
 	DefaultCommand string
+	Args           []string
 	Timeout        time.Duration
 	Workspace      string
 	Prompt         string
@@ -34,6 +35,7 @@ func Run(ctx context.Context, spec Spec) error {
 	if err != nil {
 		return err
 	}
+	args = append(append([]string{}, spec.Args...), args...)
 	args = append(args, "--prompt", spec.Prompt)
 
 	cmd := exec.CommandContext(ctx, name, args...)

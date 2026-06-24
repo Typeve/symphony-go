@@ -21,6 +21,7 @@ func TestRunCodexPassesConfiguredArgsAndPrompt(t *testing.T) {
 
 	var cfg domain.Config
 	cfg.Codex.Command = script + " app-server"
+	cfg.Codex.Model = "gpt-5.5"
 	cfg.Codex.Timeout = time.Minute
 	issue := domain.Issue{ProjectID: "p", ID: "1", Title: "Do work"}
 	ws := domain.Workspace{Path: dir, IssueKey: "p/1"}
@@ -33,12 +34,7 @@ func TestRunCodexPassesConfiguredArgsAndPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	argvText := string(argv)
-	for _, want := range []string{"app-server", "--prompt"} {
-		if !strings.Contains(argvText, want) {
-			t.Fatalf("argv = %q, missing %q", argvText, want)
-		}
-	}
+	assertOrder(t, string(argv), "--model", "gpt-5.5", "app-server", "--prompt")
 }
 
 func TestBuildCodexPromptIncludesIssueDetails(t *testing.T) {
@@ -78,7 +74,7 @@ func writeArgvCaptureCommand(t *testing.T, dir, name, argvPath string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		script := filepath.Join(dir, name+"-argv.cmd")
-		content := "@echo off\r\n(\r\n  echo %1\r\n  echo %2\r\n) > \"" + argvPath + "\"\r\n"
+		content := "@echo off\r\n(\r\n  echo %1\r\n  echo %2\r\n  echo %3\r\n  echo %4\r\n  echo %5\r\n  echo %6\r\n) > \"" + argvPath + "\"\r\n"
 		if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -114,4 +110,19 @@ func writeFailingOutputCommand(t *testing.T, dir, name, output string) string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func assertOrder(t *testing.T, text string, values ...string) {
+	t.Helper()
+	last := -1
+	for _, value := range values {
+		index := strings.Index(text, value)
+		if index < 0 {
+			t.Fatalf("argv = %q, missing %q", text, value)
+		}
+		if index <= last {
+			t.Fatalf("argv = %q, want %q after previous values", text, value)
+		}
+		last = index
+	}
 }

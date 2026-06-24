@@ -15,6 +15,7 @@ func RunCodex(ctx context.Context, cfg domain.Config, issue domain.Issue, ws dom
 	if err := agentcmd.Run(ctx, agentcmd.Spec{
 		Command:        cfg.Codex.Command,
 		DefaultCommand: "codex",
+		Args:           codexArgs(cfg.Codex.Model),
 		Timeout:        cfg.Codex.Timeout,
 		Workspace:      ws.Path,
 		Prompt:         prompt,
@@ -22,6 +23,14 @@ func RunCodex(ctx context.Context, cfg domain.Config, issue domain.Issue, ws dom
 		return fmt.Errorf("codex: %w", err)
 	}
 	return nil
+}
+
+func codexArgs(model string) []string {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return nil
+	}
+	return []string{"--model", model}
 }
 
 func buildCodexPrompt(issue domain.Issue) string {
