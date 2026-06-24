@@ -21,10 +21,10 @@ func TestFetchPendingIssuesSkipsManagedStatusLabels(t *testing.T) {
 			t.Fatalf("state query = %q, want open", got)
 		}
 		_ = json.NewEncoder(w).Encode([]giteaIssue{
-			{Number: 1, Title: "ready", State: "open"},
-			{Number: 2, Title: "running", State: "open", Labels: []giteaLabel{{Name: "symphony-running"}}},
-			{Number: 3, Title: "done", State: "open", Labels: []giteaLabel{{Name: "symphony-done"}}},
-			{Number: 4, Title: "failed", State: "open", Labels: []giteaLabel{{Name: "symphony-failed"}}},
+			{Number: 1, Title: "ready"},
+			{Number: 2, Title: "running", Labels: []giteaLabel{{Name: "symphony-running"}}},
+			{Number: 3, Title: "done", Labels: []giteaLabel{{Name: "symphony-done"}}},
+			{Number: 4, Title: "failed", Labels: []giteaLabel{{Name: "symphony-failed"}}},
 		})
 	}))
 	defer server.Close()
@@ -69,13 +69,13 @@ func TestFetchPendingIssuesUsesActiveStatesDedupesAndSkipsPullRequests(t *testin
 		switch state {
 		case "open":
 			_ = json.NewEncoder(w).Encode([]giteaIssue{
-				{Number: 10, Title: "ready", State: "open"},
-				{Number: 11, Title: "pull request", State: "open", PullRequest: map[string]any{}},
+				{Number: 10, Title: "ready"},
+				{Number: 11, Title: "pull request", PullRequest: map[string]any{}},
 			})
 		case "closed":
 			_ = json.NewEncoder(w).Encode([]giteaIssue{
-				{Number: 10, Title: "ready duplicate", State: "closed"},
-				{Number: 12, Title: "closed ready", State: "closed"},
+				{Number: 10, Title: "ready duplicate"},
+				{Number: 12, Title: "closed ready"},
 			})
 		default:
 			t.Fatalf("unexpected state query %q", state)

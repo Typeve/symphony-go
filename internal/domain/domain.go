@@ -5,17 +5,11 @@ import "time"
 // Issue represents a tracker issue.
 type Issue struct {
 	ProjectID   string
-	SourceID    string
 	ID          string
 	Identifier  string
 	Title       string
 	Description *string
-	State       string
-	BranchName  *string
-	URL         *string
 	Labels      []string
-	Assignees   []string
-	CreatedAt   *time.Time
 }
 
 // ProjectConfig holds per-project settings.
@@ -23,7 +17,6 @@ type ProjectConfig struct {
 	ID           string   `yaml:"id"`
 	RepoURL      string   `yaml:"repo_url"`
 	ActiveStates []string `yaml:"active_states"`
-	BranchPrefix string   `yaml:"branch_prefix"`
 }
 
 // Config is the top-level configuration loaded from YAML.
@@ -55,11 +48,10 @@ type Config struct {
 	} `yaml:"workspace"`
 }
 
-// Status represents the symphony processing state of an issue.
+// Status represents a managed Symphony status label written to the tracker.
 type Status string
 
 const (
-	StatusPending Status = "pending"
 	StatusRunning Status = "running"
 	StatusDone    Status = "done"
 	StatusFailed  Status = "failed"

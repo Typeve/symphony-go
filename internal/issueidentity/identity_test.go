@@ -2,7 +2,6 @@ package issueidentity
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/local/symphony/internal/domain"
@@ -23,19 +22,19 @@ func TestIdentityDerivesBranchNameAndWorkspaceKey(t *testing.T) {
 	}
 }
 
-func TestIdentityUsesSourceIDBeforeIssueID(t *testing.T) {
+func TestIdentityUsesIssueIDBeforeIdentifier(t *testing.T) {
 	identity := For(domain.Issue{
-		ProjectID: "p",
-		SourceID:  "source-99",
-		ID:        "42",
-		Title:     "Do work",
+		ProjectID:  "p",
+		ID:         "42",
+		Identifier: "acme/app#99",
+		Title:      "Do work",
 	})
 
-	if !strings.Contains(identity.BranchName(), "issue-99-do-work") {
-		t.Fatalf("BranchName() = %q, want source issue number", identity.BranchName())
+	if got := identity.BranchName(); got != "symphony/p/issue-42-do-work" {
+		t.Fatalf("BranchName() = %q", got)
 	}
-	if !strings.Contains(identity.WorkspaceKey(), "issue-99-do-work") {
-		t.Fatalf("WorkspaceKey() = %q, want source issue number", identity.WorkspaceKey())
+	if got := identity.WorkspaceKey(); got != filepath.Join("p", "issue-42-do-work") {
+		t.Fatalf("WorkspaceKey() = %q", got)
 	}
 }
 

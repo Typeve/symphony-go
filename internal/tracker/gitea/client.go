@@ -10,7 +10,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/local/symphony/internal/domain"
 )
@@ -334,24 +333,13 @@ type giteaIssue struct {
 	Number      int          `json:"number"`
 	Title       string       `json:"title"`
 	Body        *string      `json:"body"`
-	State       string       `json:"state"`
-	HTMLURL     *string      `json:"html_url"`
-	CreatedAt   *string      `json:"created_at"`
-	UpdatedAt   *string      `json:"updated_at"`
 	Labels      []giteaLabel `json:"labels"`
-	Assignees   []giteaUser  `json:"assignees"`
 	PullRequest any          `json:"pull_request"`
 }
 
 type giteaLabel struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
-}
-
-type giteaUser struct {
-	UserName string `json:"username"`
-	Login    string `json:"login"`
-	FullName string `json:"full_name"`
 }
 
 func (c *Client) normalizeIssue(owner, repo string, raw giteaIssue) (domain.Issue, error) {
@@ -361,33 +349,14 @@ func (c *Client) normalizeIssue(owner, repo string, raw giteaIssue) (domain.Issu
 	if strings.TrimSpace(raw.Title) == "" {
 		return domain.Issue{}, fmt.Errorf("issue %d missing title", raw.Number)
 	}
-	created, err := parseOptionalTime(raw.Number, "created_at", raw.CreatedAt)
-	if err != nil {
-		return domain.Issue{}, err
-	}
 	id := strconv.Itoa(raw.Number)
 	return domain.Issue{
 		ID:          id,
 		Identifier:  owner + "/" + repo + "#" + id,
 		Title:       raw.Title,
 		Description: raw.Body,
-		State:       raw.State,
-		URL:         raw.HTMLURL,
 		Labels:      normalizeLabels(raw.Labels),
-		Assignees:   normalizeAssignees(raw.Assignees),
-		CreatedAt:   created,
 	}, nil
-}
-
-func parseOptionalTime(issueNumber int, field string, value *string) (*time.Time, error) {
-	if value == nil || strings.TrimSpace(*value) == "" {
-		return nil, nil
-	}
-	parsed, err := time.Parse(time.RFC3339, *value)
-	if err != nil {
-		return nil, fmt.Errorf("issue %d invalid %s: %w", issueNumber, field, err)
-	}
-	return &parsed, nil
 }
 
 func normalizeLabels(labels []giteaLabel) []string {
@@ -400,29 +369,6 @@ func normalizeLabels(labels []giteaLabel) []string {
 		if name != "" {
 			out = append(out, name)
 		}
-	}
-	return out
-}
-
-func normalizeAssignees(assignees []giteaUser) []string {
-	seen := map[string]struct{}{}
-	var out []string
-	for _, user := range assignees {
-		name := strings.ToLower(strings.TrimSpace(user.UserName))
-		if name == "" {
-			name = strings.ToLower(strings.TrimSpace(user.Login))
-		}
-		if name == "" {
-			name = strings.ToLower(strings.TrimSpace(user.FullName))
-		}
-		if name == "" {
-			continue
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		out = append(out, name)
 	}
 	return out
 }

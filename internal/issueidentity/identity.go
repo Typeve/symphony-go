@@ -57,7 +57,7 @@ func issueKey(issue domain.Issue, slug func(string) string) string {
 var numberPattern = regexp.MustCompile(`(\d+)`)
 
 func issueNumber(issue domain.Issue) string {
-	for _, value := range []string{issue.SourceID, issue.ID, issue.Identifier} {
+	for _, value := range []string{issue.ID, issue.Identifier} {
 		if match := numberPattern.FindString(strings.TrimSpace(value)); match != "" {
 			return match
 		}
