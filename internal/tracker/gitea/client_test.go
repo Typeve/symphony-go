@@ -130,6 +130,17 @@ func TestMarkStatusReplacesManagedLabelAndComments(t *testing.T) {
 			}
 			w.WriteHeader(http.StatusOK)
 		case "POST /api/v1/repos/acme/app/issues/12/comments":
+			var body struct {
+				Body string `json:"body"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode comment request: %v", err)
+			}
+			for _, want := range []string{"symphony/p/issue-12-fix-login", "abc123"} {
+				if !strings.Contains(body.Body, want) {
+					t.Fatalf("comment body = %q, missing %q", body.Body, want)
+				}
+			}
 			w.WriteHeader(http.StatusCreated)
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -141,7 +152,8 @@ func TestMarkStatusReplacesManagedLabelAndComments(t *testing.T) {
 	client := New(server.URL, "token", []domain.ProjectConfig{project}, server.Client())
 	issue := domain.Issue{ProjectID: "p", ID: "12", Identifier: "acme/app#12", Labels: []string{"bug", "symphony-running"}}
 
-	if err := client.MarkStatus(context.Background(), issue, domain.StatusDone); err != nil {
+	result := domain.PublishResult{Branch: "symphony/p/issue-12-fix-login", Commit: "abc123"}
+	if err := client.MarkStatus(context.Background(), issue, domain.StatusDone, result); err != nil {
 		t.Fatalf("MarkStatus returned error: %v", err)
 	}
 

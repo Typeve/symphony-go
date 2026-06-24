@@ -85,7 +85,7 @@ export GITEA_TOKEN="gitea_token_xxx"
 默认情况下，Symphony 会把 Gitea `open` issue 视为待处理任务，但已带有 Symphony 管理状态 label 的 issue 会被跳过。处理过程中：
 
 - 开始处理时添加 `symphony-running`。
-- Codex、review、commit、push 全部成功后添加 `symphony-done`。
+- Codex、review、commit、push 全部成功后添加 `symphony-done`；完成 comment 会包含已推送的 execution branch 和 commit。
 - 任一阶段失败时添加 `symphony-failed`。
 
 执行分支名是确定性的，例如：

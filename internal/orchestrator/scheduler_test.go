@@ -19,7 +19,9 @@ func (t testTracker) FetchPendingIssues(context.Context, domain.ProjectConfig) (
 	}
 	return t.issues, nil
 }
-func (testTracker) MarkStatus(context.Context, domain.Issue, domain.Status) error { return nil }
+func (testTracker) MarkStatus(context.Context, domain.Issue, domain.Status, ...domain.PublishResult) error {
+	return nil
+}
 
 type recordingRunner struct {
 	issues   []domain.Issue

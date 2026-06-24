@@ -119,7 +119,7 @@ func (r *Runner) Process(ctx context.Context, issue domain.Issue, project domain
 	}
 	log.Info("pushed", "branch", result.Branch, "commit", result.Commit)
 
-	if err := r.Tracker.MarkStatus(context.Background(), issue, domain.StatusDone); err != nil {
+	if err := r.Tracker.MarkStatus(context.Background(), issue, domain.StatusDone, result); err != nil {
 		log.Error("mark done failed", "error", err)
 		return
 	}

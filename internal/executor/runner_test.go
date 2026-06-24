@@ -11,15 +11,19 @@ import (
 )
 
 type recordingTracker struct {
-	statuses []domain.Status
+	statuses  []domain.Status
+	publishes []domain.PublishResult
 }
 
 func (r *recordingTracker) FetchPendingIssues(context.Context, domain.ProjectConfig) ([]domain.Issue, error) {
 	return nil, nil
 }
 
-func (r *recordingTracker) MarkStatus(_ context.Context, _ domain.Issue, status domain.Status) error {
+func (r *recordingTracker) MarkStatus(_ context.Context, _ domain.Issue, status domain.Status, publish ...domain.PublishResult) error {
 	r.statuses = append(r.statuses, status)
+	if len(publish) > 0 {
+		r.publishes = append(r.publishes, publish[0])
+	}
 	return nil
 }
 
@@ -74,6 +78,9 @@ func TestRunnerCompletesDoneHandoffInOrder(t *testing.T) {
 
 	if !reflect.DeepEqual(tr.statuses, []domain.Status{domain.StatusRunning, domain.StatusDone}) {
 		t.Fatalf("statuses = %#v", tr.statuses)
+	}
+	if !reflect.DeepEqual(tr.publishes, []domain.PublishResult{{Branch: "symphony/p/issue-12-fix-login", Commit: "abc123"}}) {
+		t.Fatalf("publishes = %#v", tr.publishes)
 	}
 	wantCalls := []string{"workspace", "branch", "codex", "reviewer", "publish", "clean"}
 	if !reflect.DeepEqual(calls, wantCalls) {

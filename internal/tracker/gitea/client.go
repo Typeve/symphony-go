@@ -104,7 +104,7 @@ func (c *Client) FetchPendingIssues(ctx context.Context, project domain.ProjectC
 }
 
 // MarkStatus adds a status label and comment to the Gitea issue.
-func (c *Client) MarkStatus(ctx context.Context, issue domain.Issue, status domain.Status) error {
+func (c *Client) MarkStatus(ctx context.Context, issue domain.Issue, status domain.Status, publish ...domain.PublishResult) error {
 	owner, repo := splitSlug(c.repos[issue.ProjectID])
 	if owner == "" || repo == "" {
 		return fmt.Errorf("gitea: unknown project %q for issue %s", issue.ProjectID, issue.ID)
@@ -125,7 +125,7 @@ func (c *Client) MarkStatus(ctx context.Context, issue domain.Issue, status doma
 	if err := c.replaceIssueLabels(ctx, owner, repo, number, issue.Labels, label); err != nil {
 		return err
 	}
-	return c.addIssueComment(ctx, owner, repo, number, statusComment(status))
+	return c.addIssueComment(ctx, owner, repo, number, statusComment(status, publish...))
 }
 
 func statusLabel(status domain.Status) string {
@@ -154,12 +154,27 @@ func statusDescription(status domain.Status) string {
 	}
 }
 
-func statusComment(status domain.Status) string {
+func statusComment(status domain.Status, publish ...domain.PublishResult) string {
 	switch status {
 	case domain.StatusRunning:
 		return "任务已开始自动处理，请稍后查看后续结果。"
 	case domain.StatusDone:
-		return "任务已自动处理完成。"
+		if len(publish) == 0 || (strings.TrimSpace(publish[0].Branch) == "" && strings.TrimSpace(publish[0].Commit) == "") {
+			return "任务已自动处理完成。"
+		}
+		var b strings.Builder
+		b.WriteString("任务已自动处理完成，execution branch 已推送，等待人工审核。")
+		if branch := strings.TrimSpace(publish[0].Branch); branch != "" {
+			b.WriteString("\n\nBranch: `")
+			b.WriteString(branch)
+			b.WriteString("`")
+		}
+		if commit := strings.TrimSpace(publish[0].Commit); commit != "" {
+			b.WriteString("\nCommit: `")
+			b.WriteString(commit)
+			b.WriteString("`")
+		}
+		return b.String()
 	case domain.StatusFailed:
 		return "任务自动处理失败，需要人工检查。"
 	default:

@@ -85,7 +85,7 @@ If `-config` is omitted, Symphony reads `symphony.yaml` from the current directo
 By default, Symphony treats Gitea `open` issues as pending unless they already have a managed Symphony label. When an issue is processed:
 
 - `symphony-running` is added when work starts.
-- `symphony-done` is added after Codex, review, commit, and push succeed.
+- `symphony-done` is added after Codex, review, commit, and push succeed; the done comment includes the pushed execution branch and commit.
 - `symphony-failed` is added when a pipeline stage fails.
 
 Execution branches use deterministic names such as:
