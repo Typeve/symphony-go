@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -52,7 +53,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	)
 
 	// Poll immediately on start.
-	s.poll(ctx)
+	_ = s.poll(ctx)
 
 	for {
 		select {
@@ -61,13 +62,31 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			slog.Info("scheduler stopped")
 			return nil
 		case <-ticker.C:
-			s.poll(ctx)
+			_ = s.poll(ctx)
 		}
 	}
 }
 
+// RunOnce polls all projects once, waits for dispatched issues, and returns
+// fetch errors so deployments can use it as a smoke check.
+func (s *Scheduler) RunOnce(ctx context.Context) error {
+	slog.Info("scheduler run once started",
+		"max_concurrent", cap(s.sem),
+		"projects", len(s.Config.Gitea.Projects),
+	)
+	err := s.poll(ctx)
+	s.wg.Wait()
+	if err != nil {
+		return err
+	}
+	slog.Info("scheduler run once completed")
+	return nil
+}
+
 // poll fetches issues from all projects and dispatches pending ones.
-func (s *Scheduler) poll(ctx context.Context) {
+func (s *Scheduler) poll(ctx context.Context) error {
+	var fetchErr error
+	failedProjects := 0
 	for _, proj := range s.Config.Gitea.Projects {
 		issues, err := s.Tracker.FetchPendingIssues(ctx, proj)
 		if err != nil {
@@ -75,6 +94,10 @@ func (s *Scheduler) poll(ctx context.Context) {
 				"project", proj.ID,
 				"error", err,
 			)
+			failedProjects++
+			if fetchErr == nil {
+				fetchErr = err
+			}
 			continue
 		}
 
@@ -106,4 +129,8 @@ func (s *Scheduler) poll(ctx context.Context) {
 			)
 		}
 	}
+	if failedProjects > 0 {
+		return fmt.Errorf("fetch issues failed for %d project(s): %w", failedProjects, fetchErr)
+	}
+	return nil
 }

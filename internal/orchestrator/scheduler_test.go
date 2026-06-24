@@ -43,7 +43,9 @@ func TestPollDispatchesPendingIssueToRunner(t *testing.T) {
 	s := New(cfg, testTracker{issues: []domain.Issue{issue}})
 	s.runner = runner
 
-	s.poll(context.Background())
+	if err := s.poll(context.Background()); err != nil {
+		t.Fatalf("poll returned error: %v", err)
+	}
 	s.wg.Wait()
 
 	if len(runner.issues) != 1 || runner.issues[0].ID != "1" {
@@ -62,11 +64,42 @@ func TestPollDoesNotDispatchWhenFetchPendingIssuesFails(t *testing.T) {
 	s := New(cfg, testTracker{err: errors.New("tracker unavailable")})
 	s.runner = runner
 
-	s.poll(context.Background())
+	err := s.poll(context.Background())
 	s.wg.Wait()
 
+	if err == nil {
+		t.Fatal("poll returned nil error, want fetch failure")
+	}
 	if len(runner.issues) != 0 {
 		t.Fatalf("runner issues = %#v, want no dispatch", runner.issues)
+	}
+}
+
+func TestRunOnceWaitsForDispatchedIssues(t *testing.T) {
+	var cfg domain.Config
+	cfg.Scheduler.MaxConcurrent = 1
+	cfg.Gitea.Projects = []domain.ProjectConfig{{ID: "p"}}
+	issue := domain.Issue{ProjectID: "p", ID: "1", Identifier: "acme/app#1", Title: "Do work"}
+	runner := &recordingRunner{}
+	s := New(cfg, testTracker{issues: []domain.Issue{issue}})
+	s.runner = runner
+
+	if err := s.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce returned error: %v", err)
+	}
+	if len(runner.issues) != 1 {
+		t.Fatalf("runner issues = %#v, want dispatched issue", runner.issues)
+	}
+}
+
+func TestRunOnceReturnsFetchError(t *testing.T) {
+	var cfg domain.Config
+	cfg.Scheduler.MaxConcurrent = 1
+	cfg.Gitea.Projects = []domain.ProjectConfig{{ID: "p"}}
+	s := New(cfg, testTracker{err: errors.New("tracker unavailable")})
+
+	if err := s.RunOnce(context.Background()); err == nil {
+		t.Fatal("RunOnce returned nil error, want fetch failure")
 	}
 }
 
@@ -82,7 +115,9 @@ func TestPollDoesNotDispatchWhenConcurrencySlotUnavailable(t *testing.T) {
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
 
-	s.poll(context.Background())
+	if err := s.poll(context.Background()); err != nil {
+		t.Fatalf("poll returned error: %v", err)
+	}
 	s.wg.Wait()
 
 	if len(runner.issues) != 0 {

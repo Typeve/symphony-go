@@ -15,6 +15,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "symphony.yaml", "path to config file")
+	runOnce := flag.Bool("once", false, "poll once, wait for dispatched work, then exit")
 	flag.Parse()
 
 	level := slog.LevelInfo
@@ -48,8 +49,14 @@ func main() {
 		"max_concurrent", cfg.Scheduler.MaxConcurrent,
 	)
 
-	if err := sched.Run(ctx); err != nil {
-		slog.Error("scheduler exited", "error", err)
+	var runErr error
+	if *runOnce {
+		runErr = sched.RunOnce(ctx)
+	} else {
+		runErr = sched.Run(ctx)
+	}
+	if runErr != nil {
+		slog.Error("scheduler exited", "error", runErr)
 		os.Exit(1)
 	}
 }

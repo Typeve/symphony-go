@@ -78,6 +78,12 @@ export GITEA_TOKEN="gitea_token_xxx"
 ./bin/symphony -config symphony.yaml
 ```
 
+使用 `-once` 可以只轮询一次，等待已派发任务结束后退出：
+
+```bash
+./bin/symphony -config symphony.yaml -once
+```
+
 如果不传 `-config`，Symphony 会读取当前目录下的 `symphony.yaml`。
 
 ## Issue 处理

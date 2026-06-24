@@ -159,4 +159,10 @@ go build ./cmd/symphony
 git diff --check
 ```
 
+部署后可先跑一次轮询 smoke：
+
+```bash
+/opt/symphony/bin/symphony -config /etc/symphony/symphony.yaml -once
+```
+
 部署前建议使用测试仓库创建一个低风险 open issue，确认能生成 execution branch，并在 issue 中看到最终状态 comment。

@@ -78,6 +78,12 @@ export GITEA_TOKEN="gitea_token_xxx"
 ./bin/symphony -config symphony.yaml
 ```
 
+Use `-once` to poll once, wait for any dispatched work, and exit:
+
+```bash
+./bin/symphony -config symphony.yaml -once
+```
+
 If `-config` is omitted, Symphony reads `symphony.yaml` from the current directory.
 
 ## Issue Handling
