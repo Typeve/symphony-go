@@ -92,7 +92,7 @@ export GITEA_TOKEN="gitea_token_xxx"
 
 - 开始处理时添加 `symphony-running`。
 - Codex、review、commit、push 全部成功后添加 `symphony-done`；完成 comment 会包含已推送的 execution branch 和 commit。
-- 任一阶段失败时添加 `symphony-failed`。
+- 任一阶段失败时添加 `symphony-failed`；如果已有失败上下文，失败 comment 会包含失败阶段原因和保留的 workspace 路径。
 
 执行分支名是确定性的，例如：
 

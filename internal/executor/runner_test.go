@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,19 +12,15 @@ import (
 )
 
 type recordingTracker struct {
-	statuses  []domain.Status
-	publishes []domain.PublishResult
+	updates []domain.StatusUpdate
 }
 
 func (r *recordingTracker) FetchPendingIssues(context.Context, domain.ProjectConfig) ([]domain.Issue, error) {
 	return nil, nil
 }
 
-func (r *recordingTracker) MarkStatus(_ context.Context, _ domain.Issue, status domain.Status, publish ...domain.PublishResult) error {
-	r.statuses = append(r.statuses, status)
-	if len(publish) > 0 {
-		r.publishes = append(r.publishes, publish[0])
-	}
+func (r *recordingTracker) MarkStatus(_ context.Context, _ domain.Issue, update domain.StatusUpdate) error {
+	r.updates = append(r.updates, update)
 	return nil
 }
 
@@ -76,11 +73,11 @@ func TestRunnerCompletesDoneHandoffInOrder(t *testing.T) {
 
 	r.Process(context.Background(), issue, project)
 
-	if !reflect.DeepEqual(tr.statuses, []domain.Status{domain.StatusRunning, domain.StatusDone}) {
-		t.Fatalf("statuses = %#v", tr.statuses)
+	if got := statuses(tr.updates); !reflect.DeepEqual(got, []domain.Status{domain.StatusRunning, domain.StatusDone}) {
+		t.Fatalf("statuses = %#v", got)
 	}
-	if !reflect.DeepEqual(tr.publishes, []domain.PublishResult{{Branch: "symphony/p/issue-12-fix-login", Commit: "abc123"}}) {
-		t.Fatalf("publishes = %#v", tr.publishes)
+	if got := tr.updates[1].Publish; !reflect.DeepEqual(got, (domain.PublishResult{Branch: "symphony/p/issue-12-fix-login", Commit: "abc123"})) {
+		t.Fatalf("publish = %#v", got)
 	}
 	wantCalls := []string{"workspace", "branch", "codex", "reviewer", "publish", "clean"}
 	if !reflect.DeepEqual(calls, wantCalls) {
@@ -121,8 +118,15 @@ func TestRunnerMarksFailedAndPreservesWorkspaceWhenReviewerFails(t *testing.T) {
 
 	r.Process(context.Background(), issue, project)
 
-	if !reflect.DeepEqual(tr.statuses, []domain.Status{domain.StatusRunning, domain.StatusFailed}) {
-		t.Fatalf("statuses = %#v", tr.statuses)
+	if got := statuses(tr.updates); !reflect.DeepEqual(got, []domain.Status{domain.StatusRunning, domain.StatusFailed}) {
+		t.Fatalf("statuses = %#v", got)
+	}
+	failure := tr.updates[1]
+	if !strings.Contains(failure.FailureReason, "reviewer failed: review failed") {
+		t.Fatalf("failure reason = %q", failure.FailureReason)
+	}
+	if failure.WorkspacePath != ws.Path {
+		t.Fatalf("failure workspace = %q, want %q", failure.WorkspacePath, ws.Path)
 	}
 	if cleaned {
 		t.Fatal("failed run cleaned workspace; want preserved")
@@ -150,10 +154,25 @@ func TestRunnerMarksFailedWithoutCleaningWhenWorkspaceCreateFails(t *testing.T) 
 
 	r.Process(context.Background(), issue, project)
 
-	if !reflect.DeepEqual(tr.statuses, []domain.Status{domain.StatusRunning, domain.StatusFailed}) {
-		t.Fatalf("statuses = %#v", tr.statuses)
+	if got := statuses(tr.updates); !reflect.DeepEqual(got, []domain.Status{domain.StatusRunning, domain.StatusFailed}) {
+		t.Fatalf("statuses = %#v", got)
+	}
+	failure := tr.updates[1]
+	if !strings.Contains(failure.FailureReason, "create workspace failed: clone failed") {
+		t.Fatalf("failure reason = %q", failure.FailureReason)
+	}
+	if failure.WorkspacePath != "" {
+		t.Fatalf("failure workspace = %q, want empty", failure.WorkspacePath)
 	}
 	if cleaned {
 		t.Fatal("workspace create failure should not clean empty workspace")
 	}
+}
+
+func statuses(updates []domain.StatusUpdate) []domain.Status {
+	out := make([]domain.Status, 0, len(updates))
+	for _, update := range updates {
+		out = append(out, update.Status)
+	}
+	return out
 }

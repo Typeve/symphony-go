@@ -68,3 +68,11 @@ type PublishResult struct {
 	Branch string
 	Commit string
 }
+
+// StatusUpdate is the tracker-facing status write payload.
+type StatusUpdate struct {
+	Status        Status
+	Publish       PublishResult
+	FailureReason string
+	WorkspacePath string
+}

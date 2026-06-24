@@ -153,7 +153,10 @@ func TestMarkStatusReplacesManagedLabelAndComments(t *testing.T) {
 	issue := domain.Issue{ProjectID: "p", ID: "12", Identifier: "acme/app#12", Labels: []string{"bug", "symphony-running"}}
 
 	result := domain.PublishResult{Branch: "symphony/p/issue-12-fix-login", Commit: "abc123"}
-	if err := client.MarkStatus(context.Background(), issue, domain.StatusDone, result); err != nil {
+	if err := client.MarkStatus(context.Background(), issue, domain.StatusUpdate{
+		Status:  domain.StatusDone,
+		Publish: result,
+	}); err != nil {
 		t.Fatalf("MarkStatus returned error: %v", err)
 	}
 
@@ -164,5 +167,53 @@ func TestMarkStatusReplacesManagedLabelAndComments(t *testing.T) {
 	}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestMarkStatusFailedCommentIncludesFailureContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "POST /api/v1/repos/acme/app/labels":
+			w.WriteHeader(http.StatusCreated)
+		case "PUT /api/v1/repos/acme/app/issues/12/labels":
+			var body struct {
+				Labels []string `json:"labels"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode labels request: %v", err)
+			}
+			if !reflect.DeepEqual(body.Labels, []string{"bug", "symphony-failed"}) {
+				t.Fatalf("labels body = %#v, want bug plus symphony-failed", body.Labels)
+			}
+			w.WriteHeader(http.StatusOK)
+		case "POST /api/v1/repos/acme/app/issues/12/comments":
+			var body struct {
+				Body string `json:"body"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode comment request: %v", err)
+			}
+			for _, want := range []string{"reviewer failed: review failed", "C:\\workspaces\\p\\issue-12-fix-login"} {
+				if !strings.Contains(body.Body, want) {
+					t.Fatalf("comment body = %q, missing %q", body.Body, want)
+				}
+			}
+			w.WriteHeader(http.StatusCreated)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	project := domain.ProjectConfig{ID: "p", RepoURL: "https://gitea.example.com/acme/app.git"}
+	client := New(server.URL, "token", []domain.ProjectConfig{project}, server.Client())
+	issue := domain.Issue{ProjectID: "p", ID: "12", Identifier: "acme/app#12", Labels: []string{"bug", "symphony-running"}}
+
+	if err := client.MarkStatus(context.Background(), issue, domain.StatusUpdate{
+		Status:        domain.StatusFailed,
+		FailureReason: "reviewer failed: review failed",
+		WorkspacePath: "C:\\workspaces\\p\\issue-12-fix-login",
+	}); err != nil {
+		t.Fatalf("MarkStatus returned error: %v", err)
 	}
 }

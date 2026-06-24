@@ -92,7 +92,7 @@ By default, Symphony treats Gitea `open` issues as pending unless they already h
 
 - `symphony-running` is added when work starts.
 - `symphony-done` is added after Codex, review, commit, and push succeed; the done comment includes the pushed execution branch and commit.
-- `symphony-failed` is added when a pipeline stage fails.
+- `symphony-failed` is added when a pipeline stage fails; when available, the failure comment includes the failed stage reason and preserved workspace path.
 
 Execution branches use deterministic names such as:
 

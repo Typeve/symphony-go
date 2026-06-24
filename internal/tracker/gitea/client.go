@@ -15,6 +15,7 @@ import (
 )
 
 const defaultPageSize = 50
+const maxCommentDetailLen = 1000
 
 // Client is a Gitea REST client that implements tracker.Client.
 type Client struct {
@@ -104,7 +105,7 @@ func (c *Client) FetchPendingIssues(ctx context.Context, project domain.ProjectC
 }
 
 // MarkStatus adds a status label and comment to the Gitea issue.
-func (c *Client) MarkStatus(ctx context.Context, issue domain.Issue, status domain.Status, publish ...domain.PublishResult) error {
+func (c *Client) MarkStatus(ctx context.Context, issue domain.Issue, update domain.StatusUpdate) error {
 	owner, repo := splitSlug(c.repos[issue.ProjectID])
 	if owner == "" || repo == "" {
 		return fmt.Errorf("gitea: unknown project %q for issue %s", issue.ProjectID, issue.ID)
@@ -115,17 +116,17 @@ func (c *Client) MarkStatus(ctx context.Context, issue domain.Issue, status doma
 		return fmt.Errorf("gitea: issue id %q must be a positive issue number", issue.ID)
 	}
 
-	label := statusLabel(status)
+	label := statusLabel(update.Status)
 	if label == "" {
 		return nil
 	}
-	if err := c.ensureLabel(ctx, owner, repo, label, statusDescription(status)); err != nil {
+	if err := c.ensureLabel(ctx, owner, repo, label, statusDescription(update.Status)); err != nil {
 		return err
 	}
 	if err := c.replaceIssueLabels(ctx, owner, repo, number, issue.Labels, label); err != nil {
 		return err
 	}
-	return c.addIssueComment(ctx, owner, repo, number, statusComment(status, publish...))
+	return c.addIssueComment(ctx, owner, repo, number, statusComment(update))
 }
 
 func statusLabel(status domain.Status) string {
@@ -154,32 +155,57 @@ func statusDescription(status domain.Status) string {
 	}
 }
 
-func statusComment(status domain.Status, publish ...domain.PublishResult) string {
-	switch status {
+func statusComment(update domain.StatusUpdate) string {
+	switch update.Status {
 	case domain.StatusRunning:
 		return "任务已开始自动处理，请稍后查看后续结果。"
 	case domain.StatusDone:
-		if len(publish) == 0 || (strings.TrimSpace(publish[0].Branch) == "" && strings.TrimSpace(publish[0].Commit) == "") {
+		if strings.TrimSpace(update.Publish.Branch) == "" && strings.TrimSpace(update.Publish.Commit) == "" {
 			return "任务已自动处理完成。"
 		}
 		var b strings.Builder
 		b.WriteString("任务已自动处理完成，execution branch 已推送，等待人工审核。")
-		if branch := strings.TrimSpace(publish[0].Branch); branch != "" {
+		if branch := strings.TrimSpace(update.Publish.Branch); branch != "" {
 			b.WriteString("\n\nBranch: `")
 			b.WriteString(branch)
 			b.WriteString("`")
 		}
-		if commit := strings.TrimSpace(publish[0].Commit); commit != "" {
+		if commit := strings.TrimSpace(update.Publish.Commit); commit != "" {
 			b.WriteString("\nCommit: `")
 			b.WriteString(commit)
 			b.WriteString("`")
 		}
 		return b.String()
 	case domain.StatusFailed:
-		return "任务自动处理失败，需要人工检查。"
+		reason := commentDetail(update.FailureReason)
+		workspace := commentDetail(update.WorkspacePath)
+		if reason == "" && workspace == "" {
+			return "任务自动处理失败，需要人工检查。"
+		}
+		var b strings.Builder
+		b.WriteString("任务自动处理失败，需要人工检查。")
+		if reason != "" {
+			b.WriteString("\n\nReason: `")
+			b.WriteString(reason)
+			b.WriteString("`")
+		}
+		if workspace != "" {
+			b.WriteString("\nWorkspace: `")
+			b.WriteString(workspace)
+			b.WriteString("`")
+		}
+		return b.String()
 	default:
 		return "任务状态已更新。"
 	}
+}
+
+func commentDetail(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= maxCommentDetailLen {
+		return value
+	}
+	return value[:maxCommentDetailLen] + "...[truncated]"
 }
 
 func (c *Client) ensureLabel(ctx context.Context, owner, repo, label, description string) error {

@@ -116,7 +116,7 @@ journalctl -u symphony.service --since "1 hour ago"
 
 - `symphony-running`：任务已被 Symphony 接管，正在处理。
 - `symphony-done`：Codex、reviewer、commit 和 push 均已成功；完成 comment 会写入已推送的 execution branch 和 commit。
-- `symphony-failed`：某个阶段失败，需要人工检查。
+- `symphony-failed`：某个阶段失败，需要人工检查；失败 comment 会尽量写入失败阶段原因和保留的 workspace 路径。
 
 带有以上任一 label 的 open issue 会在后续轮询中跳过，避免重复消耗 Codex 额度。若确认某个失败任务可以重新处理，请先人工检查失败 workspace 和 issue comment，再移除对应管理 label 后重新派发。
 
@@ -124,7 +124,7 @@ journalctl -u symphony.service --since "1 hour ago"
 
 ### 自动处理失败
 
-查看 issue comment 和 `symphony-failed` label。失败日志会包含失败阶段、简短原因，并在 workspace 创建成功后记录 `workspace_path`。
+查看 issue comment 和 `symphony-failed` label。失败 comment 和日志会包含失败阶段、简短原因，并在 workspace 创建成功后记录 `workspace_path`。
 
 失败 workspace 会保留在：
 

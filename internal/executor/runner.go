@@ -58,7 +58,7 @@ func (r *Runner) Process(ctx context.Context, issue domain.Issue, project domain
 	)
 	log.Info("processing issue")
 
-	if err := r.Tracker.MarkStatus(ctx, issue, domain.StatusRunning); err != nil {
+	if err := r.Tracker.MarkStatus(ctx, issue, domain.StatusUpdate{Status: domain.StatusRunning}); err != nil {
 		log.Error("mark running failed", "error", err)
 		return
 	}
@@ -72,7 +72,11 @@ func (r *Runner) Process(ctx context.Context, issue domain.Issue, project domain
 		} else {
 			log.Error(reason)
 		}
-		_ = r.Tracker.MarkStatus(context.Background(), issue, domain.StatusFailed)
+		_ = r.Tracker.MarkStatus(context.Background(), issue, domain.StatusUpdate{
+			Status:        domain.StatusFailed,
+			FailureReason: reason,
+			WorkspacePath: ws.Path,
+		})
 	}
 
 	var err error
@@ -119,7 +123,10 @@ func (r *Runner) Process(ctx context.Context, issue domain.Issue, project domain
 	}
 	log.Info("pushed", "branch", result.Branch, "commit", result.Commit)
 
-	if err := r.Tracker.MarkStatus(context.Background(), issue, domain.StatusDone, result); err != nil {
+	if err := r.Tracker.MarkStatus(context.Background(), issue, domain.StatusUpdate{
+		Status:  domain.StatusDone,
+		Publish: result,
+	}); err != nil {
 		log.Error("mark done failed", "error", err)
 		return
 	}
