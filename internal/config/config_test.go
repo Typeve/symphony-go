@@ -17,6 +17,7 @@ gitea:
   projects:
     - id: "app"
       repo_url: "https://gitea.example.com/acme/app.git"
+      task_label: "symphony-task"
 `)
 
 	cfg, err := Load(path)
@@ -28,6 +29,9 @@ gitea:
 	}
 	if len(cfg.Gitea.Projects) != 1 || cfg.Gitea.Projects[0].ID != "app" {
 		t.Fatalf("projects = %#v, want configured app project", cfg.Gitea.Projects)
+	}
+	if cfg.Gitea.Projects[0].TaskLabel != "symphony-task" {
+		t.Fatalf("task label = %q, want symphony-task", cfg.Gitea.Projects[0].TaskLabel)
 	}
 }
 

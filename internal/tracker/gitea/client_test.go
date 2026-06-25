@@ -25,6 +25,7 @@ func TestFetchPendingIssuesSkipsManagedStatusLabels(t *testing.T) {
 			{Number: 2, Title: "running", Labels: []giteaLabel{{Name: "symphony-running"}}},
 			{Number: 3, Title: "done", Labels: []giteaLabel{{Name: "symphony-done"}}},
 			{Number: 4, Title: "failed", Labels: []giteaLabel{{Name: "symphony-failed"}}},
+			{Number: 5, Title: "ordinary issue", Labels: []giteaLabel{{Name: "bug"}}},
 		})
 	}))
 	defer server.Close()
@@ -36,8 +37,42 @@ func TestFetchPendingIssuesSkipsManagedStatusLabels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchPendingIssues returned error: %v", err)
 	}
+	if len(issues) != 2 {
+		t.Fatalf("issues = %#v, want two unmanaged issues", issues)
+	}
+	gotIDs := []string{issues[0].ID, issues[1].ID}
+	if !reflect.DeepEqual(gotIDs, []string{"1", "5"}) {
+		t.Fatalf("issue IDs = %#v, want unmanaged issues 1 and 5", gotIDs)
+	}
+}
+
+func TestFetchPendingIssuesRequiresTaskLabelWhenConfigured(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/repos/acme/app/issues" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+		_ = json.NewEncoder(w).Encode([]giteaIssue{
+			{Number: 1, Title: "ready", Labels: []giteaLabel{{Name: "Symphony-Task"}}},
+			{Number: 2, Title: "unlabeled"},
+			{Number: 3, Title: "wrong label", Labels: []giteaLabel{{Name: "bug"}}},
+			{Number: 4, Title: "already running", Labels: []giteaLabel{{Name: "symphony-task"}, {Name: "symphony-running"}}},
+		})
+	}))
+	defer server.Close()
+
+	project := domain.ProjectConfig{
+		ID:        "p",
+		RepoURL:   "https://gitea.example.com/acme/app.git",
+		TaskLabel: "symphony-task",
+	}
+	client := New(server.URL, "token", []domain.ProjectConfig{project}, server.Client())
+
+	issues, err := client.FetchPendingIssues(context.Background(), project)
+	if err != nil {
+		t.Fatalf("FetchPendingIssues returned error: %v", err)
+	}
 	if len(issues) != 1 || issues[0].ID != "1" {
-		t.Fatalf("issues = %#v, want only issue 1", issues)
+		t.Fatalf("issues = %#v, want only task-labeled issue 1", issues)
 	}
 }
 

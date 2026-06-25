@@ -41,6 +41,7 @@ gitea:
     - id: "my-project"
       repo_url: "https://gitea.example.com/owner/repo.git"
       active_states: ["open"]
+      task_label: "symphony-task"
 
 scheduler:
   poll_interval: 30s
@@ -118,7 +119,7 @@ journalctl -u symphony.service --since "1 hour ago"
 - `symphony-done`：Codex、reviewer、commit 和 push 均已成功；完成 comment 会写入已推送的 execution branch 和 commit。
 - `symphony-failed`：某个阶段失败，需要人工检查；失败 comment 会尽量写入失败阶段原因和保留的 workspace 路径。
 
-带有以上任一 label 的 open issue 会在后续轮询中跳过，避免重复消耗 Codex 额度。若确认某个失败任务可以重新处理，请先人工检查失败 workspace 和 issue comment，再移除对应管理 label 后重新派发。
+带有以上任一 label 的 open issue 会在后续轮询中跳过，避免重复消耗 Codex 额度。如果项目配置了 `task_label`，只有带该触发 label 的 issue 会被派发。若确认某个失败任务可以重新处理，请先人工检查失败 workspace 和 issue comment，再移除对应管理 label 后重新派发。
 
 ## 故障恢复
 
@@ -165,4 +166,4 @@ git diff --check
 /opt/symphony/bin/symphony -config /etc/symphony/symphony.yaml -once
 ```
 
-部署前建议使用测试仓库创建一个低风险 open issue，确认能生成 execution branch，并在 issue 中看到最终状态 comment。
+部署前建议使用测试仓库创建一个带 `task_label` 的低风险 open issue，确认能生成 execution branch，并在 issue 中看到最终状态 comment。

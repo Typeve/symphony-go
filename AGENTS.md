@@ -67,7 +67,8 @@ gitea:
   projects:
     - id: my-project
       repo_url: "https://gitea.example.com/user/repo.git"
-      active_states: ["Todo", "In Progress"]
+      active_states: ["open"]
+      task_label: "symphony-task"
 
 scheduler:
   poll_interval: 30s

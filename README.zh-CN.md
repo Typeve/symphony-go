@@ -27,6 +27,7 @@ Gitea issue
 - 配置从 YAML 文件读取，默认是 `symphony.yaml`。
 - issue 处理状态保持精简：`pending -> running -> done/failed`。
 - 管理状态 label 只包括 `symphony-running`、`symphony-done` 和 `symphony-failed`。
+- 项目可以通过 `task_label` 要求显式触发，避免普通 open issue 被派发。
 - Codex 和 reviewer 子进程只继承一个很小的环境变量白名单。
 - `GITEA_TOKEN` 只供 Symphony 主进程做 tracker 和 Git 操作，不传给 Codex 或 reviewer。
 - Git clone / push 使用临时 `GIT_ASKPASS`，不会把 token 写进 remote URL。
@@ -53,6 +54,7 @@ gitea:
     - id: "my-project"
       repo_url: "https://gitea.example.com/owner/repo.git"
       active_states: ["open"]
+      task_label: "symphony-task"
 
 scheduler:
   poll_interval: 30s
@@ -88,7 +90,7 @@ export GITEA_TOKEN="gitea_token_xxx"
 
 ## Issue 处理
 
-默认情况下，Symphony 会把 Gitea `open` issue 视为待处理任务，但已带有 Symphony 管理状态 label 的 issue 会被跳过。处理过程中：
+默认情况下，Symphony 会把 Gitea `open` issue 视为待处理任务，但已带有 Symphony 管理状态 label 的 issue 会被跳过。如果项目配置了 `task_label`，只有带该 label 的 issue 才会被视为待处理任务。处理过程中：
 
 - 开始处理时添加 `symphony-running`。
 - Codex、review、commit、push 全部成功后添加 `symphony-done`；完成 comment 会包含已推送的 execution branch 和 commit。

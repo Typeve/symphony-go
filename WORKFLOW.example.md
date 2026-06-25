@@ -10,6 +10,7 @@ gitea:
     - id: "symphony"
       repo_url: "https://gitea.example.com/example-owner/example-repo.git"
       active_states: ["open"]
+      task_label: "symphony-task"
 
 scheduler:
   poll_interval: 30s
@@ -30,7 +31,7 @@ workspace:
 
 ## 处理语义
 
-- Symphony 只处理没有管理状态 label 的 Gitea issue。
+- Symphony 只处理没有管理状态 label 的 Gitea issue；如果项目配置了 `task_label`，issue 还必须带有该触发 label。
 - 管理状态 label 只有 `symphony-running`、`symphony-done`、`symphony-failed`。
 - Codex 和 reviewer 子进程只继承基础环境变量白名单，不继承 `GITEA_TOKEN`。
 - reviewer 命令退出码为 0 时视为 review 通过；非 0 时任务标记为失败。

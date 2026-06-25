@@ -17,6 +17,7 @@ type ProjectConfig struct {
 	ID           string   `yaml:"id"`
 	RepoURL      string   `yaml:"repo_url"`
 	ActiveStates []string `yaml:"active_states"`
+	TaskLabel    string   `yaml:"task_label"`
 }
 
 // Config is the top-level configuration loaded from YAML.

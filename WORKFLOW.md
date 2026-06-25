@@ -6,7 +6,7 @@
 
 ```text
 Gitea open issue
--> 过滤已有管理状态 label 的 issue
+-> 过滤缺少 task_label 或已有管理状态 label 的 issue
 -> 创建本地 workspace 并 clone 配置的仓库
 -> 创建 deterministic execution branch
 -> 运行 Codex 命令
@@ -23,6 +23,8 @@ Gitea open issue
 
 带有以上任一 label 的 open issue 会被跳过，避免重复派发。
 
+如果项目配置了 `task_label`，只有带该 label 的 issue 会被派发；为空时保持兼容行为，所有未带管理状态 label 的 active issue 都可进入队列。
+
 ## 配置
 
 推荐配置文件名是 `symphony.yaml`：
@@ -35,6 +37,7 @@ gitea:
     - id: "my-project"
       repo_url: "https://gitea.example.com/owner/repo.git"
       active_states: ["open"]
+      task_label: "symphony-task"
 
 scheduler:
   poll_interval: 30s

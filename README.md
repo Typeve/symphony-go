@@ -27,6 +27,7 @@ Gitea issue
 - Configuration is loaded from a YAML file, defaulting to `symphony.yaml`.
 - Issue processing uses three managed states: `pending -> running -> done/failed`.
 - Managed labels are limited to `symphony-running`, `symphony-done`, and `symphony-failed`.
+- Projects can require a trigger label with `task_label` so ordinary open issues are not dispatched.
 - Codex and reviewer processes receive only a small environment allowlist.
 - `GITEA_TOKEN` is used by Symphony for tracker and Git operations, but it is not passed to Codex or the reviewer process.
 - Git clone and push use temporary `GIT_ASKPASS` credentials instead of writing tokens into remote URLs.
@@ -53,6 +54,7 @@ gitea:
     - id: "my-project"
       repo_url: "https://gitea.example.com/owner/repo.git"
       active_states: ["open"]
+      task_label: "symphony-task"
 
 scheduler:
   poll_interval: 30s
@@ -88,7 +90,7 @@ If `-config` is omitted, Symphony reads `symphony.yaml` from the current directo
 
 ## Issue Handling
 
-By default, Symphony treats Gitea `open` issues as pending unless they already have a managed Symphony label. When an issue is processed:
+By default, Symphony treats Gitea `open` issues as pending unless they already have a managed Symphony label. If `task_label` is set for a project, only issues with that label are pending. When an issue is processed:
 
 - `symphony-running` is added when work starts.
 - `symphony-done` is added after Codex, review, commit, and push succeed; the done comment includes the pushed execution branch and commit.

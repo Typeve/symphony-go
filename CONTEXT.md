@@ -9,7 +9,7 @@ A repository that Symphony is allowed to monitor and execute work for. Each **Ma
 _Avoid_: tracker project, repo config, watched repo
 
 **Task Issue**:
-A tracker issue selected as work for an agent run. A **Task Issue** belongs to one **Managed Project** and may produce one **Execution Branch**.
+A tracker issue selected as work for an agent run. If a **Managed Project** configures `task_label`, the issue must carry that label before Symphony dispatches it. A **Task Issue** belongs to one **Managed Project** and may produce one **Execution Branch**.
 _Avoid_: ticket, job, task when referring to the tracker record
 
 **Task Issue Execution**:

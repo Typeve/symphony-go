@@ -82,6 +82,7 @@ func (c *Client) FetchPendingIssues(ctx context.Context, project domain.ProjectC
 		return nil, err
 	}
 
+	taskLabel := normalizeLabel(project.TaskLabel)
 	var out []domain.Issue
 	seen := map[string]struct{}{}
 	for _, state := range states {
@@ -91,6 +92,9 @@ func (c *Client) FetchPendingIssues(ctx context.Context, project domain.ProjectC
 		}
 		for _, issue := range issues {
 			if hasManagedStatusLabel(issue.Labels) {
+				continue
+			}
+			if taskLabel != "" && !hasLabel(issue.Labels, taskLabel) {
 				continue
 			}
 			if _, ok := seen[issue.ID]; ok {
@@ -406,12 +410,16 @@ func normalizeLabels(labels []giteaLabel) []string {
 	}
 	out := make([]string, 0, len(labels))
 	for _, label := range labels {
-		name := strings.ToLower(strings.TrimSpace(label.Name))
+		name := normalizeLabel(label.Name)
 		if name != "" {
 			out = append(out, name)
 		}
 	}
 	return out
+}
+
+func normalizeLabel(label string) string {
+	return strings.ToLower(strings.TrimSpace(label))
 }
 
 func normalizeStates(states []string) []string {
@@ -457,6 +465,16 @@ func isManagedStatusLabel(label string) bool {
 func hasManagedStatusLabel(labels []string) bool {
 	for _, label := range labels {
 		if isManagedStatusLabel(label) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLabel(labels []string, want string) bool {
+	want = normalizeLabel(want)
+	for _, label := range labels {
+		if normalizeLabel(label) == want {
 			return true
 		}
 	}
